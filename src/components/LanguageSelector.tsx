@@ -27,7 +27,8 @@ export function LanguageSelector({ value, onValueChange, className, open, onOpen
 
   return (
     <div className="space-y-2">
-      <Select value={value} onValueChange={onValueChange} open={open} onOpenChange={onOpenChange}>
+      {/* Use undefined when there is no value to show placeholder correctly and avoid empty-string control issues */}
+      <Select value={value || undefined} onValueChange={onValueChange} open={open} onOpenChange={onOpenChange}>
         <SelectTrigger className={className}>
           <div className="flex items-center gap-2">
             <Globe className="h-4 w-4" />
