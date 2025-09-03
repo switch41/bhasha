@@ -17,42 +17,55 @@ export const create = mutation({
     })),
   },
   handler: async (ctx, args) => {
+    // Validation with explicit, actionable errors
+    if (args.type === "text" && !args.content.trim()) {
+      throw new Error("Text contributions must include non-empty content.");
+    }
+    if (args.type === "voice" && !args.audioFileId) {
+      throw new Error("Voice contributions require an uploaded audio file.");
+    }
+
     const user = await getCurrentUser(ctx);
     if (!user) {
       throw new Error("User must be authenticated to contribute");
     }
 
-    // Create the contribution
-    const contributionId = await ctx.db.insert("contributions", {
-      userId: user._id,
-      language: args.language,
-      type: args.type,
-      content: args.content,
-      audioFileId: args.audioFileId,
-      isValidated: false,
-      metadata: args.metadata,
-    });
-
-    // Update user's total contributions
-    const currentContributions = user.totalContributions || 0;
-    await ctx.db.patch(user._id, {
-      totalContributions: currentContributions + 1,
-      lastContributionDate: Date.now(),
-    });
-
-    // Update language metadata
-    const languageData = await ctx.db
-      .query("languageMetadata")
-      .withIndex("by_code", (q) => q.eq("code", args.language))
-      .unique();
-
-    if (languageData) {
-      await ctx.db.patch(languageData._id, {
-        totalContributions: languageData.totalContributions + 1,
+    try {
+      // Create the contribution
+      const contributionId = await ctx.db.insert("contributions", {
+        userId: user._id,
+        language: args.language,
+        type: args.type,
+        content: args.content,
+        audioFileId: args.audioFileId,
+        isValidated: false,
+        metadata: args.metadata,
       });
-    }
 
-    return contributionId;
+      // Update user's total contributions
+      const currentContributions = user.totalContributions || 0;
+      await ctx.db.patch(user._id, {
+        totalContributions: currentContributions + 1,
+        lastContributionDate: Date.now(),
+      });
+
+      // Update language metadata totals
+      const languageData = await ctx.db
+        .query("languageMetadata")
+        .withIndex("by_code", (q) => q.eq("code", args.language))
+        .unique();
+
+      if (languageData) {
+        await ctx.db.patch(languageData._id, {
+          totalContributions: languageData.totalContributions + 1,
+        });
+      }
+
+      return contributionId;
+    } catch (err) {
+      console.error("contributions.create failed", { args, err });
+      throw new Error("Failed to create contribution. Please try again.");
+    }
   },
 });
 

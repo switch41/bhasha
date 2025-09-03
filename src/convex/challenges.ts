@@ -3,6 +3,52 @@ import { mutation, query } from "./_generated/server";
 import { getCurrentUser } from "./users";
 import { languageValidator, contributionTypeValidator } from "./schema";
 
+// Join a challenge
+export const joinChallenge = mutation({
+  args: {
+    challengeId: v.id("challenges"),
+  },
+  handler: async (ctx, args) => {
+    const user = await getCurrentUser(ctx);
+    if (!user) {
+      throw new Error("User must be authenticated to join challenges");
+    }
+
+    try {
+      // Validate the challenge exists and is joinable
+      const challenge = await ctx.db.get(args.challengeId);
+      if (!challenge) {
+        throw new Error("Challenge not found.");
+      }
+      const now = Date.now();
+      if (!challenge.isActive || challenge.endDate <= now) {
+        throw new Error("This challenge is not currently active.");
+      }
+
+      const existing = await ctx.db
+        .query("challengeParticipations")
+        .withIndex("by_user_and_challenge", (q) =>
+          q.eq("userId", user._id).eq("challengeId", args.challengeId)
+        )
+        .unique();
+
+      if (existing) {
+        return existing._id;
+      }
+
+      return await ctx.db.insert("challengeParticipations", {
+        userId: user._id,
+        challengeId: args.challengeId,
+        contributionsCount: 0,
+        completed: false,
+      });
+    } catch (err) {
+      console.error("challenges.joinChallenge failed", { args, err });
+      throw new Error("Failed to join challenge. Please try again.");
+    }
+  },
+});
+
 // Get active challenges
 export const getActiveChallenges = query({
   args: {
@@ -20,37 +66,6 @@ export const getActiveChallenges = query({
     }
 
     return challenges;
-  },
-});
-
-// Join a challenge
-export const joinChallenge = mutation({
-  args: {
-    challengeId: v.id("challenges"),
-  },
-  handler: async (ctx, args) => {
-    const user = await getCurrentUser(ctx);
-    if (!user) {
-      throw new Error("User must be authenticated to join challenges");
-    }
-
-    const existing = await ctx.db
-      .query("challengeParticipations")
-      .withIndex("by_user_and_challenge", (q) => 
-        q.eq("userId", user._id).eq("challengeId", args.challengeId)
-      )
-      .unique();
-
-    if (existing) {
-      return existing._id;
-    }
-
-    return await ctx.db.insert("challengeParticipations", {
-      userId: user._id,
-      challengeId: args.challengeId,
-      contributionsCount: 0,
-      completed: false,
-    });
   },
 });
 

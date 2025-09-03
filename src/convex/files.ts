@@ -4,7 +4,13 @@ import { action } from "./_generated/server";
 export const generateUploadUrl = action({
   args: {},
   handler: async (ctx) => {
-    const url = await ctx.storage.generateUploadUrl();
-    return url;
+    // Add error handling with logging and rethrow for visibility
+    try {
+      const url = await ctx.storage.generateUploadUrl();
+      return url;
+    } catch (err) {
+      console.error("files.generateUploadUrl failed", err);
+      throw new Error("Unable to generate upload URL. Please try again.");
+    }
   },
 });
