@@ -8,9 +8,12 @@ interface LanguageSelectorProps {
   value?: string;
   onValueChange: (value: string) => void;
   className?: string;
+  // Add controlled open props (optional)
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function LanguageSelector({ value, onValueChange, className }: LanguageSelectorProps) {
+export function LanguageSelector({ value, onValueChange, className, open, onOpenChange }: LanguageSelectorProps) {
   const languages = useQuery(api.languages.getActiveLanguages);
 
   if (!languages) {
@@ -24,7 +27,7 @@ export function LanguageSelector({ value, onValueChange, className }: LanguageSe
 
   return (
     <div className="space-y-2">
-      <Select value={value} onValueChange={onValueChange}>
+      <Select value={value} onValueChange={onValueChange} open={open} onOpenChange={onOpenChange}>
         <SelectTrigger className={className}>
           <div className="flex items-center gap-2">
             <Globe className="h-4 w-4" />
