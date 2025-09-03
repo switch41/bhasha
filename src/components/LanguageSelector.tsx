@@ -25,6 +25,24 @@ export function LanguageSelector({ value, onValueChange, className, open, onOpen
     );
   }
 
+  // Add fallback Indic languages when DB has no entries yet
+  const fallbackLanguages = [
+    { code: "hi", name: "Hindi", nativeName: "हिन्दी", totalContributions: 0 },
+    { code: "bn", name: "Bengali", nativeName: "বাংলা", totalContributions: 0 },
+    { code: "te", name: "Telugu", nativeName: "తెలుగు", totalContributions: 0 },
+    { code: "mr", name: "Marathi", nativeName: "मराठी", totalContributions: 0 },
+    { code: "ta", name: "Tamil", nativeName: "தமிழ்", totalContributions: 0 },
+    { code: "gu", name: "Gujarati", nativeName: "ગુજરાતી", totalContributions: 0 },
+    { code: "ur", name: "Urdu", nativeName: "اردو", totalContributions: 0 },
+    { code: "kn", name: "Kannada", nativeName: "ಕನ್ನಡ", totalContributions: 0 },
+    { code: "or", name: "Odia", nativeName: "ଓଡ଼ିଆ", totalContributions: 0 },
+    { code: "pa", name: "Punjabi", nativeName: "ਪੰਜਾਬੀ", totalContributions: 0 },
+    { code: "ml", name: "Malayalam", nativeName: "മലയാളം", totalContributions: 0 },
+    { code: "as", name: "Assamese", nativeName: "অসমীয়া", totalContributions: 0 },
+  ];
+
+  const list = languages.length > 0 ? languages : fallbackLanguages;
+
   return (
     <div className="space-y-2">
       {/* Use undefined when there is no value to show placeholder correctly and avoid empty-string control issues */}
@@ -32,11 +50,11 @@ export function LanguageSelector({ value, onValueChange, className, open, onOpen
         <SelectTrigger className={className}>
           <div className="flex items-center gap-2">
             <Globe className="h-4 w-4" />
-            <SelectValue placeholder="Select a language" />
+            <SelectValue placeholder="Select an Indian language" />
           </div>
         </SelectTrigger>
         <SelectContent>
-          {languages.map((language) => (
+          {list.map((language) => (
             <SelectItem key={language.code} value={language.code}>
               <div className="flex items-center justify-between w-full">
                 <div className="flex flex-col items-start">
