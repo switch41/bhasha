@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { getSupabaseClient } from "@/lib/supabase";
 
 type TextContribution = {
   userEmail: string;
@@ -30,8 +30,11 @@ function formatSupabaseError(e: any): string {
 
 async function getOrCreateLanguageId(code: string): Promise<string> {
   try {
+    // Lazily resolve Supabase client at call time
+    const sb = getSupabaseClient();
+
     // 1) Try to find by code (ignore is_active to be lenient)
-    const { data: langRow, error: selErr } = await supabase
+    const { data: langRow, error: selErr } = await sb
       .from("languages")
       .select("id")
       .eq("code", code)
@@ -44,7 +47,7 @@ async function getOrCreateLanguageId(code: string): Promise<string> {
     if (langRow?.id) return langRow.id;
 
     // 2) Insert minimal language if missing (safe default names)
-    const { data: inserted, error: insErr } = await supabase
+    const { data: inserted, error: insErr } = await sb
       .from("languages")
       .insert({
         code,
@@ -77,8 +80,9 @@ export async function insertTextContribution({
 
   try {
     const languageId = await getOrCreateLanguageId(language);
+    const sb = getSupabaseClient();
 
-    const { error } = await supabase.from("text_contributions").insert({
+    const { error } = await sb.from("text_contributions").insert({
       user_email: userEmail,
       language_id: languageId,
       language,
@@ -110,8 +114,9 @@ export async function insertVoiceContribution({
 
   try {
     const languageId = await getOrCreateLanguageId(language);
+    const sb = getSupabaseClient();
 
-    const { error } = await supabase.from("audio_contributions").insert({
+    const { error } = await sb.from("audio_contributions").insert({
       user_email: userEmail,
       language_id: languageId,
       language,
