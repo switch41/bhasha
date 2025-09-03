@@ -17,7 +17,6 @@ interface ContributionFormProps {
 export function ContributionForm({ onSuccess }: ContributionFormProps) {
   const [selectedLanguage, setSelectedLanguage] = useState<string>("");
   const [contributionType, setContributionType] = useState<"text" | "voice">("text");
-  const [languagePickerOpen, setLanguagePickerOpen] = useState(false);
   const [textContent, setTextContent] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -169,29 +168,17 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-sm font-medium">Select Language</label>
-              <div className="flex items-center gap-2">
-                {selectedLanguage ? (
-                  <Badge variant="secondary">
-                    Selected: {selectedLanguage.toUpperCase()}
-                  </Badge>
-                ) : null}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setLanguagePickerOpen(true)}
-                >
-                  Choose Language
-                </Button>
-              </div>
+              {selectedLanguage ? (
+                <Badge variant="secondary">
+                  Selected: {selectedLanguage.toUpperCase()}
+                </Badge>
+              ) : null}
             </div>
+            {/* Use the Select trigger directly as the interactive element */}
             <LanguageSelector
               value={selectedLanguage}
-              onValueChange={(val) => {
-                setSelectedLanguage(val);
-                setLanguagePickerOpen(false);
-              }}
-              open={languagePickerOpen}
-              onOpenChange={setLanguagePickerOpen}
+              onValueChange={(val) => setSelectedLanguage(val)}
+              className="w-full"
             />
           </div>
 
