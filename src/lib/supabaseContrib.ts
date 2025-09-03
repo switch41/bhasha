@@ -15,6 +15,39 @@ type VoiceContribution = {
   duration?: number;
 };
 
+async function getOrCreateLanguageId(code: string): Promise<string> {
+  // 1) Try to find by code (ignore is_active to be lenient)
+  const { data: langRow, error: selErr } = await supabase
+    .from("languages")
+    .select("id")
+    .eq("code", code)
+    .limit(1)
+    .maybeSingle();
+
+  if (selErr) {
+    // surface the original error to help debugging
+    throw selErr;
+  }
+  if (langRow?.id) return langRow.id;
+
+  // 2) Insert minimal language if missing (safe default names)
+  const { data: inserted, error: insErr } = await supabase
+    .from("languages")
+    .insert({
+      code,
+      name: code.toUpperCase(),
+      native_name: code, // fallback to code if unknown
+      is_active: true,
+    })
+    .select("id")
+    .single();
+
+  if (insErr) {
+    throw insErr;
+  }
+  return inserted.id;
+}
+
 export async function insertTextContribution({
   userEmail,
   language,
@@ -22,53 +55,22 @@ export async function insertTextContribution({
   wordCount,
   difficulty,
 }: TextContribution) {
-  // Resolve language_id via languages table
-  let languageId: string | null = null;
-  try {
-    const { data: langRow } = await supabase
-      .from("languages")
-      .select("id")
-      .eq("code", language)
-      .eq("is_active", true)
-      .limit(1)
-      .maybeSingle();
-    languageId = langRow?.id ?? null;
-  } catch {
-    languageId = null;
-  }
+  // Ensure language exists and get its id
+  const languageId = await getOrCreateLanguageId(language);
 
-  // Prefer writing to text_contributions using language_id and explicit columns
-  try {
-    const { error } = await supabase.from("text_contributions").insert({
-      user_email: userEmail,
-      language_id: languageId, // FK to languages.id
-      // fallback for legacy 'language' if present
-      language,
-      content,
-      // explicit columns
-      word_count: wordCount,
-      difficulty,
-      is_validated: false,
-      // keep metadata for flexibility
-      metadata: { wordCount, difficulty },
-      created_at: new Date().toISOString(),
-    });
-    if (error) throw error;
-    return;
-  } catch {
-    // Fallback: if language_id column doesn't exist yet, insert using legacy 'language' column
-    const { error } = await supabase.from("text_contributions").insert({
-      user_email: userEmail,
-      language,
-      content,
-      word_count: wordCount,
-      difficulty,
-      is_validated: false,
-      metadata: { wordCount, difficulty },
-      created_at: new Date().toISOString(),
-    });
-    if (error) throw error;
-  }
+  // Insert with required language_id (keep legacy 'language' for convenience)
+  const { error } = await supabase.from("text_contributions").insert({
+    user_email: userEmail,
+    language_id: languageId,
+    language, // legacy column retained
+    content,
+    word_count: wordCount,
+    difficulty,
+    is_validated: false,
+    metadata: { wordCount, difficulty },
+    created_at: new Date().toISOString(),
+  });
+  if (error) throw error;
 }
 
 export async function insertVoiceContribution({
@@ -77,49 +79,19 @@ export async function insertVoiceContribution({
   audioStorageId,
   duration,
 }: VoiceContribution) {
-  // Resolve language_id via languages table
-  let languageId: string | null = null;
-  try {
-    const { data: langRow } = await supabase
-      .from("languages")
-      .select("id")
-      .eq("code", language)
-      .eq("is_active", true)
-      .limit(1)
-      .maybeSingle();
-    languageId = langRow?.id ?? null;
-  } catch {
-    languageId = null;
-  }
+  // Ensure language exists and get its id
+  const languageId = await getOrCreateLanguageId(language);
 
-  // Prefer writing to audio_contributions using language_id and explicit columns
-  try {
-    const { error } = await supabase.from("audio_contributions").insert({
-      user_email: userEmail,
-      language_id: languageId, // FK to languages.id
-      // fallback for legacy 'language' if present
-      language,
-      audio_storage_id: audioStorageId,
-      // explicit column
-      duration,
-      is_validated: false,
-      // keep metadata for flexibility
-      metadata: { duration },
-      created_at: new Date().toISOString(),
-    });
-    if (error) throw error;
-    return;
-  } catch {
-    // Fallback: if language_id column doesn't exist yet, insert using legacy 'language' column
-    const { error } = await supabase.from("audio_contributions").insert({
-      user_email: userEmail,
-      language,
-      audio_storage_id: audioStorageId,
-      duration,
-      is_validated: false,
-      metadata: { duration },
-      created_at: new Date().toISOString(),
-    });
-    if (error) throw error;
-  }
+  // Insert with required language_id (keep legacy 'language' for convenience)
+  const { error } = await supabase.from("audio_contributions").insert({
+    user_email: userEmail,
+    language_id: languageId,
+    language, // legacy column retained
+    audio_storage_id: audioStorageId,
+    duration,
+    is_validated: false,
+    metadata: { duration },
+    created_at: new Date().toISOString(),
+  });
+  if (error) throw error;
 }
