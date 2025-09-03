@@ -17,6 +17,7 @@ import type * as auth_emailOtp from "../auth/emailOtp.js";
 import type * as auth from "../auth.js";
 import type * as challenges from "../challenges.js";
 import type * as contributions from "../contributions.js";
+import type * as files from "../files.js";
 import type * as http from "../http.js";
 import type * as languages from "../languages.js";
 import type * as seedData from "../seedData.js";
@@ -35,6 +36,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   challenges: typeof challenges;
   contributions: typeof contributions;
+  files: typeof files;
   http: typeof http;
   languages: typeof languages;
   seedData: typeof seedData;

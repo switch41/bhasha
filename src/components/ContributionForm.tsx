@@ -3,8 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/convex/_generated/api";
-import { useMutation } from "convex/react";
-import { useState } from "react";
+import { useMutation, useAction } from "convex/react";
+import { useState, useRef } from "react";
 import { toast } from "sonner";
 import { Mic, Type, Send, Loader2 } from "lucide-react";
 import { LanguageSelector } from "./LanguageSelector";
@@ -20,29 +20,80 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
   const [textContent, setTextContent] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string>("");
+  const [recordingDuration, setRecordingDuration] = useState<number>(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Array<BlobPart>>([]);
+  const timerRef = useRef<number | null>(null);
 
   const createContribution = useMutation(api.contributions.create);
+  const generateUploadUrl = useAction(api.files.generateUploadUrl);
 
   const handleSubmit = async () => {
-    if (!selectedLanguage || !textContent.trim()) {
-      toast.error("Please select a language and enter content");
+    if (!selectedLanguage) {
+      toast.error("Please select a language");
       return;
     }
 
     setIsSubmitting(true);
     try {
-      await createContribution({
-        language: selectedLanguage as any,
-        type: contributionType,
-        content: textContent.trim(),
-        metadata: {
-          wordCount: textContent.trim().split(/\s+/).length,
-          difficulty: textContent.length > 100 ? "medium" : "easy",
-        },
-      });
+      if (contributionType === "text") {
+        if (!textContent.trim()) {
+          toast.error("Please enter text content");
+          setIsSubmitting(false);
+          return;
+        }
 
-      toast.success("Contribution submitted successfully!");
-      setTextContent("");
+        await createContribution({
+          language: selectedLanguage as any,
+          type: contributionType,
+          content: textContent.trim(),
+          metadata: {
+            wordCount: textContent.trim().split(/\s+/).length,
+            difficulty: textContent.length > 100 ? "medium" : "easy",
+          },
+        });
+
+        toast.success("Contribution submitted successfully!");
+        setTextContent("");
+      } else {
+        // Voice
+        if (!audioBlob) {
+          toast.error("Please record audio first");
+          setIsSubmitting(false);
+          return;
+        }
+
+        // 1) Get signed upload URL
+        const uploadUrl = await generateUploadUrl({});
+        // 2) Upload the blob
+        const res = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": audioBlob.type || "audio/webm" },
+          body: audioBlob,
+        });
+        if (!res.ok) {
+          throw new Error("Upload failed");
+        }
+        const { storageId } = await res.json();
+
+        // 3) Save contribution
+        await createContribution({
+          language: selectedLanguage as any,
+          type: "voice",
+          content: "Voice contribution",
+          audioFileId: storageId,
+          metadata: { duration: recordingDuration },
+        });
+
+        toast.success("Voice contribution submitted!");
+        // clear recording
+        setAudioBlob(null);
+        setAudioUrl("");
+        setRecordingDuration(0);
+      }
+
       onSuccess?.();
     } catch (error) {
       toast.error("Failed to submit contribution");
@@ -52,10 +103,51 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
     }
   };
 
-  const handleVoiceRecording = () => {
-    // Voice recording functionality would be implemented here
-    setIsRecording(!isRecording);
-    toast.info("Voice recording feature coming soon!");
+  const handleVoiceRecording = async () => {
+    try {
+      if (!isRecording) {
+        // Start recording
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mr = new MediaRecorder(stream);
+        chunksRef.current = [];
+        mediaRecorderRef.current = mr;
+
+        mr.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
+        };
+        mr.onstop = () => {
+          const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+          setAudioBlob(blob);
+          const url = URL.createObjectURL(blob);
+          setAudioUrl(url);
+          // stop all tracks
+          stream.getTracks().forEach((t) => t.stop());
+          // clear timer
+          if (timerRef.current) {
+            window.clearInterval(timerRef.current);
+            timerRef.current = null;
+          }
+        };
+
+        // start duration timer
+        setRecordingDuration(0);
+        timerRef.current = window.setInterval(() => {
+          setRecordingDuration((d) => d + 1);
+        }, 1000);
+
+        mr.start();
+        setIsRecording(true);
+        toast.info("Recording started");
+      } else {
+        // Stop recording
+        mediaRecorderRef.current?.stop();
+        setIsRecording(false);
+        toast.info("Recording stopped");
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error("Microphone permission denied or unavailable");
+    }
   };
 
   return (
@@ -97,11 +189,9 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
                 variant={contributionType === "voice" ? "default" : "outline"}
                 onClick={() => setContributionType("voice")}
                 className="flex-1"
-                disabled
               >
                 <Mic className="h-4 w-4 mr-2" />
                 Voice
-                <Badge variant="secondary" className="ml-2">Soon</Badge>
               </Button>
             </div>
           </div>
@@ -126,19 +216,27 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
 
           {contributionType === "voice" && (
             <div className="space-y-4">
-              <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-lg">
+              <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-lg w-full">
                 <Button
                   variant={isRecording ? "destructive" : "outline"}
                   size="lg"
                   onClick={handleVoiceRecording}
                   className="mb-4"
+                  disabled={isSubmitting}
                 >
                   <Mic className="h-5 w-5 mr-2" />
                   {isRecording ? "Stop Recording" : "Start Recording"}
                 </Button>
-                <p className="text-sm text-muted-foreground text-center">
-                  Voice recording feature coming soon
+                <p className="text-sm text-muted-foreground text-center mb-2">
+                  {isRecording
+                    ? `Recording... ${recordingDuration}s`
+                    : audioBlob
+                      ? `Recorded ${Math.max(1, recordingDuration)}s`
+                      : "Click to start recording your voice contribution"}
                 </p>
+                {audioUrl && (
+                  <audio controls src={audioUrl} className="w-full max-w-md" />
+                )}
               </div>
             </div>
           )}
@@ -146,7 +244,11 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
           {/* Submit Button */}
           <Button
             onClick={handleSubmit}
-            disabled={!selectedLanguage || !textContent.trim() || isSubmitting}
+            disabled={
+              isSubmitting ||
+              !selectedLanguage ||
+              (contributionType === "text" ? !textContent.trim() : !audioBlob)
+            }
             className="w-full"
             size="lg"
           >
