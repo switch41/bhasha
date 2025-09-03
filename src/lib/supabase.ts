@@ -12,14 +12,27 @@ let runtimeUrl: string | undefined;
 let runtimeAnon: string | undefined;
 
 try {
+  // Extend resolution to also check the parent window (iframe host) safely
+  const parentGlobal = (() => {
+    try {
+      return (window as any)?.parent || undefined;
+    } catch {
+      return undefined;
+    }
+  })();
+
   runtimeUrl =
     (globalThis as any)?.__SUPABASE_URL ||
     (globalThis as any)?.SUPABASE_URL ||
+    (parentGlobal as any)?.__SUPABASE_URL ||
+    (parentGlobal as any)?.SUPABASE_URL ||
     (typeof localStorage !== "undefined" ? localStorage.getItem("SUPABASE_URL") || undefined : undefined);
 
   runtimeAnon =
     (globalThis as any)?.__SUPABASE_ANON_KEY ||
     (globalThis as any)?.SUPABASE_ANON_KEY ||
+    (parentGlobal as any)?.__SUPABASE_ANON_KEY ||
+    (parentGlobal as any)?.SUPABASE_ANON_KEY ||
     (typeof localStorage !== "undefined" ? localStorage.getItem("SUPABASE_ANON_KEY") || undefined : undefined);
 } catch {
   // ignore access errors (SSR or storage disabled)
