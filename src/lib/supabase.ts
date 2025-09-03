@@ -1,26 +1,21 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-// Vite client-side env vars
+// Vite client-side env vars (may be undefined during local setup)
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  // Throw at module init so we catch misconfigurations early
-  throw new Error(
-    "Missing Supabase env vars. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY."
-  );
-}
-
-// Narrow types after runtime guard
-const url: string = supabaseUrl;
-const key: string = supabaseAnonKey;
 
 // Singleton client for the frontend
 let _client: SupabaseClient | null = null;
 
+// Lazily initialize and return the client. Throws only when actually used without config.
 export function getSupabaseClient(): SupabaseClient {
   if (_client) return _client;
-  _client = createClient(url, key, {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error(
+      "Supabase client not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY."
+    );
+  }
+  _client = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
@@ -29,5 +24,17 @@ export function getSupabaseClient(): SupabaseClient {
   return _client;
 }
 
-// Convenient default export
-export const supabase = getSupabaseClient();
+// Safe default export: if envs are missing, accessing any property will throw at usage time.
+// This avoids crashing the entire app during module import.
+export const supabase: SupabaseClient = supabaseUrl && supabaseAnonKey
+  ? getSupabaseClient()
+  : (new Proxy(
+      {},
+      {
+        get() {
+          throw new Error(
+            "Supabase client not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY."
+          );
+        },
+      },
+    ) as SupabaseClient);
