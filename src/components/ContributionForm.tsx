@@ -55,7 +55,6 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
         const wc = textContent.trim().split(/\s+/).length;
         const diff = textContent.length > 100 ? "medium" : "easy";
 
-        // Strictly write to Supabase
         await insertTextContribution({
           userEmail,
           language: selectedLanguage as any,
@@ -67,27 +66,30 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
         toast.success("Contribution submitted to Supabase!");
         setTextContent("");
       } else {
-        // Voice
         if (!audioBlob) {
           toast.error("Please record audio first");
           setIsSubmitting(false);
           return;
         }
 
-        // 1) Get signed upload URL (Convex storage)
-        const uploadUrl = await generateUploadUrl({});
-        // 2) Upload the blob
+        let uploadUrl: string;
+        try {
+          uploadUrl = await generateUploadUrl({});
+        } catch (e: any) {
+          throw new Error(`Failed to get upload URL: ${e?.message || "Unknown error"}`);
+        }
+
         const res = await fetch(uploadUrl, {
           method: "POST",
           headers: { "Content-Type": audioBlob.type || "audio/webm" },
           body: audioBlob,
         });
         if (!res.ok) {
-          throw new Error("Upload failed");
+          const body = await res.text().catch(() => "");
+          throw new Error(`Upload failed (${res.status}): ${body || res.statusText}`);
         }
         const { storageId } = await res.json();
 
-        // 3) Strictly write to Supabase
         await insertVoiceContribution({
           userEmail,
           language: selectedLanguage as any,
@@ -96,16 +98,16 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
         });
 
         toast.success("Voice contribution submitted to Supabase!");
-        // clear recording
         setAudioBlob(null);
         setAudioUrl("");
         setRecordingDuration(0);
       }
 
       onSuccess?.();
-    } catch (error) {
-      toast.error("Failed to submit to Supabase");
-      console.error(error);
+    } catch (error: any) {
+      const msg = error?.message || "Failed to submit to Supabase";
+      toast.error(msg);
+      console.error("Submit error:", error);
     } finally {
       setIsSubmitting(false);
     }
