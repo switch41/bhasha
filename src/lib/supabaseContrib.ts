@@ -37,15 +37,19 @@ export async function insertTextContribution({
     languageId = null;
   }
 
-  // Prefer writing to text_contributions using language_id
+  // Prefer writing to text_contributions using language_id and explicit columns
   try {
     const { error } = await supabase.from("text_contributions").insert({
       user_email: userEmail,
       language_id: languageId, // FK to languages.id
-      // fallback if db still expects 'language' column present (will be ignored if not)
+      // fallback for legacy 'language' if present
       language,
       content,
+      // explicit columns
+      word_count: wordCount,
+      difficulty,
       is_validated: false,
+      // keep metadata for flexibility
       metadata: { wordCount, difficulty },
       created_at: new Date().toISOString(),
     });
@@ -57,6 +61,8 @@ export async function insertTextContribution({
       user_email: userEmail,
       language,
       content,
+      word_count: wordCount,
+      difficulty,
       is_validated: false,
       metadata: { wordCount, difficulty },
       created_at: new Date().toISOString(),
@@ -86,15 +92,18 @@ export async function insertVoiceContribution({
     languageId = null;
   }
 
-  // Prefer writing to audio_contributions using language_id
+  // Prefer writing to audio_contributions using language_id and explicit columns
   try {
     const { error } = await supabase.from("audio_contributions").insert({
       user_email: userEmail,
       language_id: languageId, // FK to languages.id
-      // fallback if db still expects 'language' column present (will be ignored if not)
+      // fallback for legacy 'language' if present
       language,
       audio_storage_id: audioStorageId,
+      // explicit column
+      duration,
       is_validated: false,
+      // keep metadata for flexibility
       metadata: { duration },
       created_at: new Date().toISOString(),
     });
@@ -106,6 +115,7 @@ export async function insertVoiceContribution({
       user_email: userEmail,
       language,
       audio_storage_id: audioStorageId,
+      duration,
       is_validated: false,
       metadata: { duration },
       created_at: new Date().toISOString(),

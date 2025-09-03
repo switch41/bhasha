@@ -31,12 +31,15 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
   const { user } = useAuth();
   const userEmail = user?.email || "";
 
-  const createContribution = useMutation(api.contributions.create);
   const generateUploadUrl = useAction(api.files.generateUploadUrl);
 
   const handleSubmit = async () => {
     if (!selectedLanguage) {
       toast.error("Please select a language");
+      return;
+    }
+    if (!userEmail) {
+      toast.error("Please sign in to contribute (missing email)");
       return;
     }
 
@@ -52,36 +55,16 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
         const wc = textContent.trim().split(/\s+/).length;
         const diff = textContent.length > 100 ? "medium" : "easy";
 
-        // Try Supabase first
-        if (userEmail) {
-          try {
-            await insertTextContribution({
-              userEmail,
-              language: selectedLanguage as any,
-              content: textContent.trim(),
-              wordCount: wc,
-              difficulty: diff,
-            });
-          } catch (e) {
-            // fallback to Convex
-            await createContribution({
-              language: selectedLanguage as any,
-              type: "text",
-              content: textContent.trim(),
-              metadata: { wordCount: wc, difficulty: diff },
-            });
-          }
-        } else {
-          // if no email present, fallback to Convex
-          await createContribution({
-            language: selectedLanguage as any,
-            type: "text",
-            content: textContent.trim(),
-            metadata: { wordCount: wc, difficulty: diff },
-          });
-        }
+        // Strictly write to Supabase
+        await insertTextContribution({
+          userEmail,
+          language: selectedLanguage as any,
+          content: textContent.trim(),
+          wordCount: wc,
+          difficulty: diff,
+        });
 
-        toast.success("Contribution submitted successfully!");
+        toast.success("Contribution submitted to Supabase!");
         setTextContent("");
       } else {
         // Voice
@@ -104,34 +87,15 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
         }
         const { storageId } = await res.json();
 
-        // 3) Try Supabase first
-        let savedToSupabase = false;
-        if (userEmail) {
-          try {
-            await insertVoiceContribution({
-              userEmail,
-              language: selectedLanguage as any,
-              audioStorageId: storageId,
-              duration: recordingDuration,
-            });
-            savedToSupabase = true;
-          } catch (e) {
-            savedToSupabase = false;
-          }
-        }
+        // 3) Strictly write to Supabase
+        await insertVoiceContribution({
+          userEmail,
+          language: selectedLanguage as any,
+          audioStorageId: storageId,
+          duration: recordingDuration,
+        });
 
-        if (!savedToSupabase) {
-          // fallback to Convex write
-          await createContribution({
-            language: selectedLanguage as any,
-            type: "voice",
-            content: "Voice contribution",
-            audioFileId: storageId,
-            metadata: { duration: recordingDuration },
-          });
-        }
-
-        toast.success("Voice contribution submitted!");
+        toast.success("Voice contribution submitted to Supabase!");
         // clear recording
         setAudioBlob(null);
         setAudioUrl("");
@@ -140,7 +104,7 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
 
       onSuccess?.();
     } catch (error) {
-      toast.error("Failed to submit contribution");
+      toast.error("Failed to submit to Supabase");
       console.error(error);
     } finally {
       setIsSubmitting(false);
