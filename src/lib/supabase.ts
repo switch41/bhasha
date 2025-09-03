@@ -1,12 +1,14 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-// Replace the strict Vite-only env usage with flexible multi-source resolution
-// Supports (in order):
-// 1) Vite env vars (VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY)
-// 2) Runtime globals set by integrations UI: globalThis.__SUPABASE_URL / __SUPABASE_ANON_KEY
-// 3) LocalStorage keys: SUPABASE_URL / SUPABASE_ANON_KEY
-const viteUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const viteAnon = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+// Replace the Vite-only env reads with a union that also supports Next.js-style envs
+const viteUrl =
+  (import.meta as any)?.env?.VITE_SUPABASE_URL as string | undefined ||
+  ((import.meta as any)?.env?.NEXT_PUBLIC_SUPABASE_URL as string | undefined);
+
+const viteAnon =
+  (import.meta as any)?.env?.VITE_SUPABASE_ANON_KEY as string | undefined ||
+  ((import.meta as any)?.env?.NEXT_PUBLIC_SUPABASE_ANON_KEY as string | undefined) ||
+  ((import.meta as any)?.env?.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY as string | undefined);
 
 let runtimeUrl: string | undefined;
 let runtimeAnon: string | undefined;
@@ -24,16 +26,34 @@ try {
   runtimeUrl =
     (globalThis as any)?.__SUPABASE_URL ||
     (globalThis as any)?.SUPABASE_URL ||
+    (globalThis as any)?.NEXT_PUBLIC_SUPABASE_URL || // support Next-style global
     (parentGlobal as any)?.__SUPABASE_URL ||
     (parentGlobal as any)?.SUPABASE_URL ||
-    (typeof localStorage !== "undefined" ? localStorage.getItem("SUPABASE_URL") || undefined : undefined);
+    (parentGlobal as any)?.NEXT_PUBLIC_SUPABASE_URL || // support Next-style in parent
+    (typeof localStorage !== "undefined"
+      ? localStorage.getItem("SUPABASE_URL") ||
+        localStorage.getItem("NEXT_PUBLIC_SUPABASE_URL") || // support Next-style in localStorage
+        undefined
+      : undefined);
 
   runtimeAnon =
     (globalThis as any)?.__SUPABASE_ANON_KEY ||
     (globalThis as any)?.SUPABASE_ANON_KEY ||
+    (globalThis as any)?.NEXT_PUBLIC_SUPABASE_ANON_KEY || // support Next-style anon
+    (globalThis as any)?.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY || // support publishable key name
+    (globalThis as any)?.SUPABASE_PUBLISHABLE_DEFAULT_KEY || // common alt
     (parentGlobal as any)?.__SUPABASE_ANON_KEY ||
     (parentGlobal as any)?.SUPABASE_ANON_KEY ||
-    (typeof localStorage !== "undefined" ? localStorage.getItem("SUPABASE_ANON_KEY") || undefined : undefined);
+    (parentGlobal as any)?.NEXT_PUBLIC_SUPABASE_ANON_KEY || // parent Next-style
+    (parentGlobal as any)?.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ||
+    (parentGlobal as any)?.SUPABASE_PUBLISHABLE_DEFAULT_KEY ||
+    (typeof localStorage !== "undefined"
+      ? localStorage.getItem("SUPABASE_ANON_KEY") ||
+        localStorage.getItem("NEXT_PUBLIC_SUPABASE_ANON_KEY") ||
+        localStorage.getItem("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY") ||
+        localStorage.getItem("SUPABASE_PUBLISHABLE_DEFAULT_KEY") ||
+        undefined
+      : undefined);
 } catch {
   // ignore access errors (SSR or storage disabled)
 }
