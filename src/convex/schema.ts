@@ -99,6 +99,43 @@ const schema = defineSchema(
     .index("by_type", ["type"])
     .index("by_user_and_language", ["userId", "language"]),
 
+    // Text contributions (separate table)
+    textContributions: defineTable({
+      userId: v.id("users"),
+      language: languageValidator,
+      content: v.string(),
+      isValidated: v.optional(v.boolean()),
+      validatedBy: v.optional(v.id("users")),
+      metadata: v.optional(
+        v.object({
+          wordCount: v.optional(v.number()),
+          difficulty: v.optional(v.string()),
+        })
+      ),
+    })
+      .index("by_user", ["userId"])
+      .index("by_language", ["language"])
+      .index("by_user_and_language", ["userId", "language"]),
+
+    // Audio contributions (separate table)
+    audioContributions: defineTable({
+      userId: v.id("users"),
+      language: languageValidator,
+      audioFileId: v.id("_storage"),
+      transcript: v.optional(v.string()),
+      isValidated: v.optional(v.boolean()),
+      validatedBy: v.optional(v.id("users")),
+      metadata: v.optional(
+        v.object({
+          duration: v.optional(v.number()),
+          difficulty: v.optional(v.string()),
+        })
+      ),
+    })
+      .index("by_user", ["userId"])
+      .index("by_language", ["language"])
+      .index("by_user_and_language", ["userId", "language"]),
+
     // Weekly challenges
     challenges: defineTable({
       title: v.string(),
