@@ -12,6 +12,7 @@ import Landing from "./pages/Landing.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import "./types/global.d.ts";
 import Dashboard from "@/pages/Dashboard.tsx";
+import { SupabaseConfigGate } from "@/components/SupabaseConfigGate";
 
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 
@@ -48,12 +49,14 @@ createRoot(document.getElementById("root")!).render(
       <ConvexAuthProvider client={convex}>
         <BrowserRouter>
           <RouteSyncer />
-          <Routes>
-            <Route path="/" element={<Landing />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/auth" element={<AuthPage redirectAfterAuth="/dashboard" />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <SupabaseConfigGate>
+            <Routes>
+              <Route path="/" element={<Landing />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/auth" element={<AuthPage redirectAfterAuth="/dashboard" />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </SupabaseConfigGate>
         </BrowserRouter>
         <Toaster />
       </ConvexAuthProvider>
