@@ -9,6 +9,8 @@ import { toast } from "sonner";
 import { Mic, Type, Send, Loader2 } from "lucide-react";
 import { LanguageSelector } from "./LanguageSelector";
 import { motion } from "framer-motion";
+import { insertTextContribution, insertVoiceContribution } from "@/lib/supabaseContrib";
+import { useAuth } from "@/hooks/use-auth";
 
 interface ContributionFormProps {
   onSuccess?: () => void;
@@ -26,6 +28,8 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Array<BlobPart>>([]);
   const timerRef = useRef<number | null>(null);
+  const { user } = useAuth();
+  const userEmail = user?.email || "";
 
   const createContribution = useMutation(api.contributions.create);
   const generateUploadUrl = useAction(api.files.generateUploadUrl);
@@ -45,15 +49,37 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
           return;
         }
 
-        await createContribution({
-          language: selectedLanguage as any,
-          type: contributionType,
-          content: textContent.trim(),
-          metadata: {
-            wordCount: textContent.trim().split(/\s+/).length,
-            difficulty: textContent.length > 100 ? "medium" : "easy",
-          },
-        });
+        const wc = textContent.trim().split(/\s+/).length;
+        const diff = textContent.length > 100 ? "medium" : "easy";
+
+        // Try Supabase first
+        if (userEmail) {
+          try {
+            await insertTextContribution({
+              userEmail,
+              language: selectedLanguage as any,
+              content: textContent.trim(),
+              wordCount: wc,
+              difficulty: diff,
+            });
+          } catch (e) {
+            // fallback to Convex
+            await createContribution({
+              language: selectedLanguage as any,
+              type: "text",
+              content: textContent.trim(),
+              metadata: { wordCount: wc, difficulty: diff },
+            });
+          }
+        } else {
+          // if no email present, fallback to Convex
+          await createContribution({
+            language: selectedLanguage as any,
+            type: "text",
+            content: textContent.trim(),
+            metadata: { wordCount: wc, difficulty: diff },
+          });
+        }
 
         toast.success("Contribution submitted successfully!");
         setTextContent("");
@@ -65,7 +91,7 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
           return;
         }
 
-        // 1) Get signed upload URL
+        // 1) Get signed upload URL (Convex storage)
         const uploadUrl = await generateUploadUrl({});
         // 2) Upload the blob
         const res = await fetch(uploadUrl, {
@@ -78,14 +104,32 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
         }
         const { storageId } = await res.json();
 
-        // 3) Save contribution
-        await createContribution({
-          language: selectedLanguage as any,
-          type: "voice",
-          content: "Voice contribution",
-          audioFileId: storageId,
-          metadata: { duration: recordingDuration },
-        });
+        // 3) Try Supabase first
+        let savedToSupabase = false;
+        if (userEmail) {
+          try {
+            await insertVoiceContribution({
+              userEmail,
+              language: selectedLanguage as any,
+              audioStorageId: storageId,
+              duration: recordingDuration,
+            });
+            savedToSupabase = true;
+          } catch (e) {
+            savedToSupabase = false;
+          }
+        }
+
+        if (!savedToSupabase) {
+          // fallback to Convex write
+          await createContribution({
+            language: selectedLanguage as any,
+            type: "voice",
+            content: "Voice contribution",
+            audioFileId: storageId,
+            metadata: { duration: recordingDuration },
+          });
+        }
 
         toast.success("Voice contribution submitted!");
         // clear recording
