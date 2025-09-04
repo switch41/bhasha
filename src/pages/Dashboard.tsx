@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { motion } from "framer-motion";
 import { Plus, BarChart3, Trophy, LogOut } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 
 export default function Dashboard() {
   const { isLoading, isAuthenticated, user, signOut } = useAuth();
@@ -25,6 +26,7 @@ export default function Dashboard() {
 
   const handleContributionSuccess = () => {
     // Optionally refresh any Supabase-driven stats later
+    toast.success("Thanks for contributing! Your entry was saved.");
   };
 
   return (
@@ -47,7 +49,14 @@ export default function Dashboard() {
                 </p>
               </div>
             </div>
-            <Button variant="outline" onClick={() => signOut()}>
+            <Button variant="outline" onClick={async () => {
+              try {
+                await signOut();
+                toast.success("Signed out successfully");
+              } catch (e: any) {
+                toast.error(e?.message || "Failed to sign out");
+              }
+            }}>
               <LogOut className="h-4 w-4 mr-2" />
               Sign Out
             </Button>
