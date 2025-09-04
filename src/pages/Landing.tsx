@@ -3,8 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/use-auth";
-import { api } from "@/convex/_generated/api";
-import { useQuery } from "convex/react";
+import { useEffect, useState } from "react";
+import { getSupabaseClient } from "@/lib/supabase";
 import { 
   Globe, 
   Users, 
@@ -19,7 +19,40 @@ import {
 
 export default function Landing() {
   const { isAuthenticated, user } = useAuth();
-  const languages = useQuery(api.languages.getActiveLanguages);
+  const [languages, setLanguages] = useState<
+    Array<{ code: string; name: string; nativeName: string; totalContributions: number }>
+  >();
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const sb = getSupabaseClient();
+        const { data, error } = await sb
+          .from("languages")
+          .select("code,name,native_name,total_contributions,is_active")
+          .eq("is_active", true);
+        if (error) throw error;
+
+        if (!cancelled) {
+          const mapped =
+            data?.map((r: any) => ({
+              code: r.code,
+              name: r.name,
+              nativeName: r.native_name,
+              totalContributions: r.total_contributions ?? 0,
+            })) ?? [];
+          setLanguages(mapped);
+        }
+      } catch (e) {
+        console.warn("Failed to load languages on Landing.", e);
+        setLanguages([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const totalContributions = languages?.reduce((sum, lang) => sum + lang.totalContributions, 0) || 0;
   const activeLanguages = languages?.length || 0;
