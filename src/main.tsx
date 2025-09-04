@@ -10,7 +10,6 @@ import Landing from "./pages/Landing.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import "./types/global.d.ts";
 import Dashboard from "@/pages/Dashboard.tsx";
-import { SupabaseConfigGate } from "@/components/SupabaseConfigGate";
 
 function RouteSyncer() {
   const location = useLocation();
@@ -39,18 +38,16 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <VlyToolbar />
     <InstrumentationProvider>
-      <SupabaseConfigGate>
-        <BrowserRouter>
-          <RouteSyncer />
-          <Routes>
-            <Route path="/" element={<Landing />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/auth" element={<AuthPage redirectAfterAuth="/dashboard" />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-        <Toaster />
-      </SupabaseConfigGate>
+      <BrowserRouter>
+        <RouteSyncer />
+        <Routes>
+          <Route path="/" element={<Landing />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/auth" element={<AuthPage redirectAfterAuth="/dashboard" />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </BrowserRouter>
+      <Toaster />
     </InstrumentationProvider>
   </StrictMode>,
 );
