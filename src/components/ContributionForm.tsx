@@ -2,8 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { api } from "@/convex/_generated/api";
-import { useMutation, useAction } from "convex/react";
+import { getSupabaseClient } from "@/lib/supabase";
 import { useState, useRef } from "react";
 import { toast } from "sonner";
 import { Mic, Type, Send, Loader2 } from "lucide-react";
@@ -31,7 +30,21 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
   const { user } = useAuth();
   const userEmail = user?.email || "";
 
-  const generateUploadUrl = useAction(api.files.generateUploadUrl);
+  async function uploadAudioToSupabase(audioBlob: Blob): Promise<string> {
+    const sb = getSupabaseClient();
+    const fileName = `audio_${Date.now()}.webm`;
+    const path = `uploads/${fileName}`;
+    const { error } = await sb.storage.from("audio").upload(path, audioBlob, {
+      cacheControl: "3600",
+      upsert: false,
+      contentType: audioBlob.type || "audio/webm",
+    });
+    if (error) {
+      throw new Error(`Audio upload failed: ${error.message || "Unknown error"}`);
+    }
+    // Return storage path; table stores a string id/path
+    return path;
+  }
 
   const handleSubmit = async () => {
     if (!selectedLanguage) {
@@ -72,28 +85,13 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
           return;
         }
 
-        let uploadUrl: string;
-        try {
-          uploadUrl = await generateUploadUrl({});
-        } catch (e: any) {
-          throw new Error(`Failed to get upload URL: ${e?.message || "Unknown error"}`);
-        }
-
-        const res = await fetch(uploadUrl, {
-          method: "POST",
-          headers: { "Content-Type": audioBlob.type || "audio/webm" },
-          body: audioBlob,
-        });
-        if (!res.ok) {
-          const body = await res.text().catch(() => "");
-          throw new Error(`Upload failed (${res.status}): ${body || res.statusText}`);
-        }
-        const { storageId } = await res.json();
+        // Upload to Supabase Storage instead of Convex
+        const storagePath = await uploadAudioToSupabase(audioBlob);
 
         await insertVoiceContribution({
           userEmail,
           language: selectedLanguage as any,
-          audioStorageId: storageId,
+          audioStorageId: storagePath,
           duration: recordingDuration,
         });
 

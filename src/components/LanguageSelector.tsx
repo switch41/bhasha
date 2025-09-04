@@ -1,7 +1,7 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { api } from "@/convex/_generated/api";
-import { useQuery } from "convex/react";
+import { useEffect, useState } from "react";
+import { getSupabaseClient } from "@/lib/supabase";
 import { Globe } from "lucide-react";
 
 interface LanguageSelectorProps {
@@ -14,9 +14,45 @@ interface LanguageSelectorProps {
 }
 
 export function LanguageSelector({ value, onValueChange, className, open, onOpenChange }: LanguageSelectorProps) {
-  const languages = useQuery(api.languages.getActiveLanguages);
+  const [languages, setLanguages] = useState<
+    Array<{ code: string; name: string; nativeName: string; totalContributions: number }>
+  >();
+  const [loading, setLoading] = useState(true);
 
-  if (!languages) {
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const sb = getSupabaseClient();
+        const { data, error } = await sb
+          .from("languages")
+          .select("code,name,native_name,total_contributions,is_active")
+          .eq("is_active", true);
+        if (error) throw error;
+
+        if (!cancelled) {
+          const mapped =
+            data?.map((r: any) => ({
+              code: r.code,
+              name: r.name,
+              nativeName: r.native_name,
+              totalContributions: r.total_contributions ?? 0,
+            })) ?? [];
+          setLanguages(mapped);
+        }
+      } catch (e) {
+        console.warn("Failed to load languages from Supabase, using fallback.", e);
+        setLanguages([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (loading || !languages) {
     return (
       <div className="flex items-center gap-2 p-3 border rounded-md bg-muted/30">
         <Globe className="h-4 w-4 text-muted-foreground" />

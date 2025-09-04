@@ -1,28 +1,54 @@
-import { api } from "@/convex/_generated/api";
-import { useAuthActions } from "@convex-dev/auth/react";
-import { useConvexAuth, useQuery } from "convex/react";
+import { useMemo } from "react";
 
-import { useEffect, useState } from "react";
+type User = {
+  email: string;
+  name?: string | null;
+};
+
+function getStoredUser(): User | null {
+  try {
+    const raw = localStorage.getItem("APP_USER");
+    return raw ? (JSON.parse(raw) as User) : null;
+  } catch {
+    return null;
+  }
+}
+
+function setStoredUser(user: User | null) {
+  try {
+    if (user) localStorage.setItem("APP_USER", JSON.stringify(user));
+    else localStorage.removeItem("APP_USER");
+  } catch {
+    // ignore
+  }
+}
 
 export function useAuth() {
-  const { isLoading: isAuthLoading, isAuthenticated } = useConvexAuth();
-  const user = useQuery(api.users.currentUser);
-  const { signIn, signOut } = useAuthActions();
+  const stored = useMemo<User | null>(getStoredUser, []);
+  const isAuthenticated = !!stored;
 
-  const [isLoading, setIsLoading] = useState(true);
-
-  // This effect updates the loading state once auth is loaded and user data is available
-  // It ensures we only show content when both authentication state and user data are ready
-  useEffect(() => {
-    if (!isAuthLoading && user !== undefined) {
-      setIsLoading(false);
+  async function signIn(provider: string, formData?: FormData) {
+    if (provider === "anonymous") {
+      setStoredUser({ email: "guest@local", name: "Guest" });
+      return;
     }
-  }, [isAuthLoading, user]);
+    if (provider === "email-otp") {
+      const email = (formData?.get("email") as string) || "";
+      if (!email) throw new Error("Email is required");
+      setStoredUser({ email, name: null });
+      return;
+    }
+    throw new Error("Unsupported sign-in provider");
+  }
+
+  async function signOut() {
+    setStoredUser(null);
+  }
 
   return {
-    isLoading,
+    isLoading: false,
     isAuthenticated,
-    user,
+    user: stored,
     signIn,
     signOut,
   };
