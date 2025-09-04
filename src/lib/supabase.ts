@@ -27,10 +27,13 @@ function resolveSupabaseEnv(): { url?: string; anon?: string } {
     runtimeUrl =
       g.__SUPABASE_URL ||
       g.SUPABASE_URL ||
+      g.NEXT_PUBLIC_SUPABASE_URL || // add global NEXT_PUBLIC fallback
       g.ENV?.SUPABASE_URL ||
       g.ENV?.NEXT_PUBLIC_SUPABASE_URL || // support Next-style env at runtime
       w?.__ENV?.SUPABASE_URL ||
       w?.__ENV?.NEXT_PUBLIC_SUPABASE_URL || // window-provided
+      w?.SUPABASE_URL || // add window global fallback
+      w?.NEXT_PUBLIC_SUPABASE_URL || // add window NEXT_PUBLIC fallback
       (typeof localStorage !== "undefined" ? localStorage.getItem("SUPABASE_URL") || undefined : undefined) ||
       (typeof sessionStorage !== "undefined" ? sessionStorage.getItem("SUPABASE_URL") || undefined : undefined);
 
@@ -38,6 +41,8 @@ function resolveSupabaseEnv(): { url?: string; anon?: string } {
       g.__SUPABASE_ANON_KEY ||
       g.SUPABASE_ANON_KEY ||
       g.SUPABASE_PUBLIC_ANON_KEY ||
+      g.NEXT_PUBLIC_SUPABASE_ANON_KEY || // add global NEXT_PUBLIC fallback
+      g.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY || // add global publishable fallback
       g.ENV?.SUPABASE_ANON_KEY ||
       g.ENV?.SUPABASE_PUBLIC_ANON_KEY ||
       g.ENV?.NEXT_PUBLIC_SUPABASE_ANON_KEY || // support Next-style runtime vars
@@ -46,6 +51,10 @@ function resolveSupabaseEnv(): { url?: string; anon?: string } {
       w?.__ENV?.SUPABASE_PUBLIC_ANON_KEY ||
       w?.__ENV?.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
       w?.__ENV?.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ||
+      w?.SUPABASE_ANON_KEY || // add window global fallback
+      w?.SUPABASE_PUBLIC_ANON_KEY || // add window global fallback
+      w?.NEXT_PUBLIC_SUPABASE_ANON_KEY || // add window NEXT_PUBLIC fallback
+      w?.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY || // add window NEXT_PUBLIC fallback
       (typeof localStorage !== "undefined" ? localStorage.getItem("SUPABASE_ANON_KEY") || undefined : undefined) ||
       (typeof sessionStorage !== "undefined" ? sessionStorage.getItem("SUPABASE_ANON_KEY") || undefined : undefined);
   } catch {
