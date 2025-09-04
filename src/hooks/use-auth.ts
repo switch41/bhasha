@@ -1,5 +1,3 @@
-import { useMemo } from "react";
-
 type User = {
   email: string;
   name?: string | null;
@@ -24,7 +22,7 @@ function setStoredUser(user: User | null) {
 }
 
 export function useAuth() {
-  const stored = useMemo<User | null>(getStoredUser, []);
+  const stored = getStoredUser();
   const isAuthenticated = !!stored;
 
   async function signIn(provider: string, formData?: FormData) {
@@ -35,6 +33,7 @@ export function useAuth() {
     if (provider === "email-otp") {
       const email = (formData?.get("email") as string) || "";
       if (!email) throw new Error("Email is required");
+      // Accept either step; we set the user based on email input
       setStoredUser({ email, name: null });
       return;
     }

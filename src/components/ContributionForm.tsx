@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { getSupabaseClient } from "@/lib/supabase";
+ 
 import { useState, useRef } from "react";
 import { toast } from "sonner";
 import { Mic, Type, Send, Loader2 } from "lucide-react";
@@ -42,8 +43,7 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
     if (error) {
       throw new Error(`Audio upload failed: ${error.message || "Unknown error"}`);
     }
-    // Return storage path; table stores a string id/path
-    return path;
+    return path; // store path as audioStorageId
   }
 
   const handleSubmit = async () => {
