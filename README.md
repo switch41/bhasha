@@ -255,3 +255,21 @@ When using convex, make sure:
 - This includes importing generated files like `@/convex/_generated/server`, `@/convex/_generated/api`
 - Remember to import functions like useQuery, useMutation, useAction, etc. from `convex/react`
 - NEVER have return type validators.
+
+## Supabase Environment Setup
+
+This app reads Supabase credentials from Vite env vars at build time:
+- VITE_SUPABASE_URL
+- VITE_SUPABASE_ANON_KEY
+
+Steps:
+1) Duplicate `.env.example` at the project root as `.env`
+2) Paste your actual values (no quotes, no trailing spaces)
+3) Reload the dev preview (hard refresh), or restart the dev environment
+
+Alternative (runtime, no env needed):
+- Open the app; if prompted by the Supabase Config screen, paste your Project URL and Anon Key there
+- Or, open DevTools Console and set:
+  localStorage.setItem("SUPABASE_URL", "https://xxxx.supabase.co");
+  localStorage.setItem("SUPABASE_ANON_KEY", "<anon_key>");
+  Reload the page
