@@ -6,6 +6,7 @@ type TextContribution = {
   content: string;
   wordCount?: number;
   difficulty?: string;
+  textStorageId?: string;
 };
 
 type VoiceContribution = {
@@ -73,6 +74,7 @@ export async function insertTextContribution({
   content,
   wordCount,
   difficulty,
+  textStorageId,
 }: TextContribution) {
   if (!userEmail) throw new Error("Missing user email");
   if (!language) throw new Error("Missing language code");
@@ -90,7 +92,7 @@ export async function insertTextContribution({
       word_count: wordCount,
       difficulty,
       is_validated: false,
-      metadata: { wordCount, difficulty },
+      metadata: { wordCount, difficulty, text_storage_id: textStorageId },
       created_at: new Date().toISOString(),
     });
 

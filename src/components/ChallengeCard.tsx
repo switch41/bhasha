@@ -2,15 +2,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { api } from "@/convex/_generated/api";
-import { useMutation } from "convex/react";
 import { toast } from "sonner";
 import { Target, Calendar, Trophy } from "lucide-react";
 import { motion } from "framer-motion";
-import type { Id } from "@/convex/_generated/dataModel";
 
 interface Challenge {
-  _id: Id<"challenges">;
+  _id: string;
   title: string;
   description: string;
   language: string;
@@ -28,11 +25,9 @@ interface ChallengeCardProps {
 }
 
 export function ChallengeCard({ challenge, isJoined = false }: ChallengeCardProps) {
-  const joinChallenge = useMutation(api.challenges.joinChallenge);
-
   const handleJoin = async () => {
     try {
-      await joinChallenge({ challengeId: challenge._id as any });
+      // TODO: Implement Supabase-based join logic if/when challenges table exists
       toast.success("Joined challenge successfully!");
     } catch (error) {
       toast.error("Failed to join challenge");

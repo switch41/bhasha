@@ -41,9 +41,33 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
       contentType: audioBlob.type || "audio/webm",
     });
     if (error) {
-      throw new Error(`Audio upload failed: ${error.message || "Unknown error"}`);
+      const msg = String(error?.message || "Unknown error");
+      if (msg.toLowerCase().includes("not found") || msg.toLowerCase().includes("bucket")) {
+        toast.error("Missing Storage bucket 'audio'. Create it in Supabase → Storage.");
+      }
+      throw new Error(`Audio upload failed: ${msg}`);
     }
     return path; // store path as audioStorageId
+  }
+
+  async function uploadTextToSupabase(text: string): Promise<string> {
+    const sb = getSupabaseClient();
+    const fileName = `text_${Date.now()}.txt`;
+    const path = `uploads/${fileName}`;
+    const textBlob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const { error } = await sb.storage.from("text").upload(path, textBlob, {
+      cacheControl: "3600",
+      upsert: false,
+      contentType: "text/plain",
+    });
+    if (error) {
+      const msg = String(error?.message || "Unknown error");
+      if (msg.toLowerCase().includes("not found") || msg.toLowerCase().includes("bucket")) {
+        toast.error("Missing Storage bucket 'text'. Create it in Supabase → Storage.");
+      }
+      throw new Error(`Text upload failed: ${msg}`);
+    }
+    return path; // store path as textStorageId
   }
 
   const handleSubmit = async () => {
@@ -68,12 +92,16 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
         const wc = textContent.trim().split(/\s+/).length;
         const diff = textContent.length > 100 ? "medium" : "easy";
 
+        // Upload the raw text file to Supabase Storage first
+        const textStoragePath = await uploadTextToSupabase(textContent.trim());
+
         await insertTextContribution({
           userEmail,
           language: selectedLanguage as any,
           content: textContent.trim(),
           wordCount: wc,
           difficulty: diff,
+          textStorageId: textStoragePath,
         });
 
         toast.success("Contribution submitted to Supabase!");

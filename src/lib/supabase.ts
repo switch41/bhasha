@@ -72,7 +72,7 @@ export function getSupabaseClient(): SupabaseClient {
   const { url, anon } = resolveSupabaseEnv();
   if (!url || !anon) {
     throw new Error(
-      "Supabase client not configured. Provide one of: VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY, SUPABASE_URL/SUPABASE_ANON_KEY, NEXT_PUBLIC_SUPABASE_URL/NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY (or NEXT_PUBLIC_SUPABASE_ANON_KEY). You can also set SUPABASE_URL and SUPABASE_ANON_KEY on window/global/localStorage."
+      "Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local, or set SUPABASE_URL/SUPABASE_ANON_KEY in localStorage."
     );
   }
 
@@ -100,7 +100,7 @@ export const supabase: SupabaseClient = (() => {
     {
       get() {
         throw new Error(
-          "Supabase client not configured. Ensure one of: VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY, SUPABASE_URL/SUPABASE_ANON_KEY, NEXT_PUBLIC_SUPABASE_URL/NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY (or NEXT_PUBLIC_SUPABASE_ANON_KEY). Alternatively, set SUPABASE_URL/SUPABASE_ANON_KEY via window/global/localStorage."
+          "Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local, or set SUPABASE_URL/SUPABASE_ANON_KEY in localStorage."
         );
       },
     },

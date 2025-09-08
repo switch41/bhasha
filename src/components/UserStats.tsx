@@ -1,15 +1,38 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { api } from "@/convex/_generated/api";
-import { useQuery } from "convex/react";
 import { Trophy, Target, Calendar, Languages } from "lucide-react";
 import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
+import { getUserStats, type UserStats as Stats } from "@/lib/supabaseStats";
+import { useAuth } from "@/hooks/use-auth";
 
 export function UserStats() {
-  const stats = useQuery(api.contributions.getUserStats);
+  const { user } = useAuth();
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  if (!stats) {
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!user?.email) {
+        setStats({ totalContributions: 0, weeklyStreak: 0, languageBreakdown: {}, badges: [] });
+        setLoading(false);
+        return;
+      }
+      try {
+        const data = await getUserStats(user.email);
+        if (!cancelled) setStats(data);
+      } catch (e) {
+        if (!cancelled) setStats({ totalContributions: 0, weeklyStreak: 0, languageBreakdown: {}, badges: [] });
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user?.email]);
+
+  if (loading || !stats) {
     return (
       <Card>
         <CardContent className="p-6">
@@ -99,7 +122,7 @@ export function UserStats() {
           </CardHeader>
           <CardContent className="space-y-4">
             {Object.entries(stats.languageBreakdown).map(([lang, count]) => {
-              const percentage = (count / stats.totalContributions) * 100;
+              const percentage = stats.totalContributions ? (count / stats.totalContributions) * 100 : 0;
               return (
                 <div key={lang} className="space-y-2">
                   <div className="flex justify-between items-center">
