@@ -1,5 +1,5 @@
 import { useAuth } from "@/hooks/use-auth";
-import { Navigate } from "react-router";
+import { Navigate, useNavigate } from "react-router";
 import { ContributionForm } from "@/components/ContributionForm";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +11,7 @@ import { toast } from "sonner";
 export default function Dashboard() {
   const { isLoading, isAuthenticated, user, signOut } = useAuth();
   const [activeTab] = useState<"contribute">("contribute");
+  const navigate = useNavigate();
   
   if (isLoading) {
     return (
@@ -53,6 +54,7 @@ export default function Dashboard() {
               try {
                 await signOut();
                 toast.success("Signed out successfully");
+                navigate("/auth", { replace: true });
               } catch (e: any) {
                 toast.error(e?.message || "Failed to sign out");
               }
