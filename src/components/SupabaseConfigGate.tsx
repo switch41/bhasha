@@ -49,6 +49,44 @@ export function SupabaseConfigGate({ children }: { children: React.ReactNode }) 
     }
   }, []);
 
+  // NEW: Auto-apply credentials via URL params for easy sharing
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const pUrl = params.get("supabaseUrl");
+      const pAnon = params.get("supabaseAnon");
+      if (pUrl && pAnon) {
+        localStorage.setItem("SUPABASE_URL", pUrl);
+        localStorage.setItem("SUPABASE_ANON_KEY", pAnon);
+        (window as any).__SUPABASE_URL = pUrl;
+        (window as any).__SUPABASE_ANON_KEY = pAnon;
+
+        // Clean URL to avoid re-applying on refresh
+        const cleanUrl = window.location.origin + window.location.pathname;
+        window.history.replaceState({}, "", cleanUrl);
+
+        // Reload to ensure the client picks up new config across the app
+        setTimeout(() => location.reload(), 50);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // NEW: If env-configured, persist to localStorage so future visits skip the gate
+  useEffect(() => {
+    if (configured && url && anon) {
+      try {
+        const lsUrl = localStorage.getItem("SUPABASE_URL");
+        const lsAnon = localStorage.getItem("SUPABASE_ANON_KEY");
+        if (lsUrl !== url) localStorage.setItem("SUPABASE_URL", url);
+        if (lsAnon !== anon) localStorage.setItem("SUPABASE_ANON_KEY", anon);
+      } catch {
+        // ignore storage issues
+      }
+    }
+  }, [configured, url, anon]);
+
   if (configured) return <>{children}</>;
 
   const save = () => {
