@@ -55,7 +55,8 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
     const fileName = `text_${Date.now()}.txt`;
     const path = `uploads/${fileName}`;
     const textBlob = new Blob([text], { type: "text/plain;charset=utf-8" });
-    const { error } = await sb.storage.from("text").upload(path, textBlob, {
+    // Change storage bucket from "text" to "text-contributions"
+    const { error } = await sb.storage.from("text-contributions").upload(path, textBlob, {
       cacheControl: "3600",
       upsert: false,
       contentType: "text/plain",
@@ -63,7 +64,8 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
     if (error) {
       const msg = String(error?.message || "Unknown error");
       if (msg.toLowerCase().includes("not found") || msg.toLowerCase().includes("bucket")) {
-        toast.error("Missing Storage bucket 'text'. Create it in Supabase → Storage.");
+        // Update error hint to the correct bucket name
+        toast.error("Missing Storage bucket 'text-contributions'. Create it in Supabase → Storage.");
       }
       throw new Error(`Text upload failed: ${msg}`);
     }
