@@ -106,6 +106,41 @@ begin
   end if;
 end$$;
 
+-- IMAGE CONTRIBUTIONS
+alter table if exists public.image_contributions enable row level security;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'image_contributions'
+      and policyname = 'image_contrib_insert_public'
+  ) then
+    create policy "image_contrib_insert_public"
+      on public.image_contributions
+      for insert
+      to anon, authenticated
+      with check (true);
+  end if;
+end$$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'image_contributions'
+      and policyname = 'image_contrib_select_public'
+  ) then
+    create policy "image_contrib_select_public"
+      on public.image_contributions
+      for select
+      to anon, authenticated
+      using (true);
+  end if;
+end$$;
+
 -- STORAGE: Allow public read/write for 'audio' and 'text' buckets
 -- Note: Ensure these buckets exist in Supabase Storage first.
 alter table if exists storage.objects enable row level security;
@@ -175,5 +210,74 @@ begin
       for select
       to anon, authenticated
       using (bucket_id = 'text');
+  end if;
+end$$;
+
+-- STORAGE: 'text-contributions' and 'images' buckets
+alter table if exists storage.objects enable row level security;
+
+-- INSERT/SELECT to 'text-contributions' bucket
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'storage'
+      and tablename = 'objects'
+      and policyname = 'storage_text_contributions_insert_public'
+  ) then
+    create policy "storage_text_contributions_insert_public"
+      on storage.objects
+      for insert
+      to anon, authenticated
+      with check (bucket_id = 'text-contributions');
+  end if;
+end$$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'storage'
+      and tablename = 'objects'
+      and policyname = 'storage_text_contributions_select_public'
+  ) then
+    create policy "storage_text_contributions_select_public"
+      on storage.objects
+      for select
+      to anon, authenticated
+      using (bucket_id = 'text-contributions');
+  end if;
+end$$;
+
+-- INSERT/SELECT to 'images' bucket
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'storage'
+      and tablename = 'objects'
+      and policyname = 'storage_images_insert_public'
+  ) then
+    create policy "storage_images_insert_public"
+      on storage.objects
+      for insert
+      to anon, authenticated
+      with check (bucket_id = 'images');
+  end if;
+end$$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'storage'
+      and tablename = 'objects'
+      and policyname = 'storage_images_select_public'
+  ) then
+    create policy "storage_images_select_public"
+      on storage.objects
+      for select
+      to anon, authenticated
+      using (bucket_id = 'images');
   end if;
 end$$;

@@ -18,43 +18,47 @@ function formatSupabaseError(e: any): string {
   return e?.message || e?.error_description || e?.hint || "Unknown error";
 }
 
-export async function getUserStats(userEmail: string): Promise<UserStats> {
+export async function getUserStats(_userEmail: string): Promise<UserStats> {
   const sb = getSupabaseClient();
   const today = startOfDay(new Date());
   const sevenDaysAgo = new Date(today);
   sevenDaysAgo.setDate(today.getDate() - 6);
 
-  // Fetch counts in parallel
+  // Always use current Supabase auth user to match RLS (auth.uid())
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user?.id) {
+    return { totalContributions: 0, weeklyStreak: 0, languageBreakdown: {}, badges: [] };
+  }
+
   const [textRes, audioRes] = await Promise.all([
     sb
       .from("text_contributions")
-      .select("language, created_at", { count: "exact" })
-      .eq("user_email", userEmail),
+      .select("language_code, created_at", { count: "exact" })
+      .eq("user_id", user.id),
     sb
       .from("audio_contributions")
-      .select("language, created_at", { count: "exact" })
-      .eq("user_email", userEmail),
+      .select("language_code, created_at", { count: "exact" })
+      .eq("user_id", user.id),
   ]);
 
   if (textRes.error) throw new Error(`Failed to fetch text stats: ${formatSupabaseError(textRes.error)}`);
   if (audioRes.error) throw new Error(`Failed to fetch audio stats: ${formatSupabaseError(audioRes.error)}`);
 
-  const textRows = (textRes.data ?? []) as Array<{ language: string; created_at: string }>;
-  const audioRows = (audioRes.data ?? []) as Array<{ language: string; created_at: string }>;
+  const textRows = (textRes.data ?? []) as Array<{ language_code: string; created_at: string }>;
+  const audioRows = (audioRes.data ?? []) as Array<{ language_code: string; created_at: string }>;
 
   const allRows = [...textRows, ...audioRows];
 
-  // Total contributions
   const totalContributions = (textRes.count ?? 0) + (audioRes.count ?? 0);
 
-  // Language breakdown
   const languageBreakdown: Record<string, number> = {};
   for (const row of allRows) {
-    const lang = row.language || "unknown";
+    const lang = row.language_code || "unknown";
     languageBreakdown[lang] = (languageBreakdown[lang] || 0) + 1;
   }
 
-  // Weekly streak = contributions on how many distinct days in last 7 days
   const daysWithContrib = new Set<string>();
   for (const row of allRows) {
     const created = new Date(row.created_at);
@@ -64,7 +68,6 @@ export async function getUserStats(userEmail: string): Promise<UserStats> {
   }
   const weeklyStreak = daysWithContrib.size;
 
-  // Badges (simple client-side rules)
   const badges: string[] = [];
   if (totalContributions >= 1) badges.push("First Contribution");
   if (totalContributions >= 10) badges.push("Contributor x10");

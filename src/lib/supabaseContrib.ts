@@ -16,6 +16,16 @@ type VoiceContribution = {
   duration?: number;
 };
 
+type ImageContribution = {
+  userEmail?: string;
+  language: string;
+  filePath: string;
+  caption?: string;
+  extractedText?: string;
+  fileSize?: number;
+  topic?: string | null;
+};
+
 function formatSupabaseError(e: any): string {
   if (!e) return "Unknown error";
   if (typeof e === "string") return e;
@@ -26,45 +36,6 @@ function formatSupabaseError(e: any): string {
     return JSON.stringify(e);
   } catch {
     return "Unknown error";
-  }
-}
-
-async function getOrCreateLanguageId(code: string): Promise<string> {
-  try {
-    // Lazily resolve Supabase client at call time
-    const sb = getSupabaseClient();
-
-    // 1) Try to find by code (ignore is_active to be lenient)
-    const { data: langRow, error: selErr } = await sb
-      .from("languages")
-      .select("id")
-      .eq("code", code)
-      .limit(1)
-      .maybeSingle();
-
-    if (selErr) {
-      throw new Error(`Failed fetching language '${code}': ${formatSupabaseError(selErr)}`);
-    }
-    if (langRow?.id) return langRow.id;
-
-    // 2) Insert minimal language if missing (safe default names)
-    const { data: inserted, error: insErr } = await sb
-      .from("languages")
-      .insert({
-        code,
-        name: code.toUpperCase(),
-        native_name: code,
-        is_active: true,
-      })
-      .select("id")
-      .single();
-
-    if (insErr) {
-      throw new Error(`Failed creating language '${code}': ${formatSupabaseError(insErr)}`);
-    }
-    return inserted.id;
-  } catch (err) {
-    throw new Error(`Language resolution error for '${code}': ${formatSupabaseError(err)}`);
   }
 }
 
@@ -82,77 +53,30 @@ export async function insertTextContribution({
   try {
     const sb = getSupabaseClient();
 
-    // Try to get the active Supabase session user for strict RLS (auth.uid())
-    let effectiveEmail = userEmail;
-    let supabaseUserId: string | undefined;
-    try {
-      const { data: { user } } = await sb.auth.getUser();
-      if (user?.email && !effectiveEmail) effectiveEmail = user.email;
-      if (user?.id) supabaseUserId = user.id;
-    } catch {
-      // ignore if no auth session
-    }
+    // Must use current Supabase auth user to satisfy RLS (auth.uid() = user_id)
+    const {
+      data: { user },
+      error: authErr,
+    } = await sb.auth.getUser();
+    if (authErr) throw authErr;
+    if (!user?.id) throw new Error("You must be signed in to submit text.");
 
-    if (!effectiveEmail) throw new Error("Missing user email");
-
-    const languageId = await getOrCreateLanguageId(language);
-
-    // STRICT schema attempt (requires Supabase Auth session + columns user_id, language_code)
-    // If your table enforces auth.uid() = user_id via RLS, this will pass.
-    if (supabaseUserId) {
-      const strictPayload: Record<string, any> = {
-        user_id: supabaseUserId,
-        language_code: language,
-        content,
-        word_count: wordCount,
-        difficulty,
-        is_validated: false,
-        // Keep metadata rich
-        metadata: {
-          wordCount,
-          difficulty,
-          text_storage_id: textStorageId,
-          supabase_user_id: supabaseUserId,
-          email: effectiveEmail,
-        },
-        created_at: new Date().toISOString(),
-      };
-
-      const strictRes = await sb.from("text_contributions").insert(strictPayload);
-      if (!strictRes.error) {
-        return;
-      }
-      // If strict fails due to missing columns or different schema, fall through to legacy
-      // but only if the error looks like a column issue or not-null/RLS mismatch
-      // Otherwise propagate the specific error
-      const msg = formatSupabaseError(strictRes.error);
-      const maybeSchemaMismatch =
-        msg.toLowerCase().includes("column") ||
-        msg.toLowerCase().includes("does not exist") ||
-        msg.toLowerCase().includes("null value") ||
-        msg.toLowerCase().includes("violates row-level security") ||
-        msg.toLowerCase().includes("new row violates");
-      if (!maybeSchemaMismatch) {
-        throw new Error(`Insert failed (text_contributions strict): ${msg}`);
-      }
-    }
-
-    // LEGACY schema (user_email + language_id + language) fallback
-    const { error: legacyErr } = await sb.from("text_contributions").insert({
-      user_email: effectiveEmail,
-      language_id: languageId,
-      language,
+    const payload: Record<string, any> = {
+      user_id: user.id,
+      language_code: language,
       content,
-      word_count: wordCount,
-      difficulty,
-      is_validated: false,
-      metadata: { wordCount, difficulty, text_storage_id: textStorageId, supabase_user_id: supabaseUserId },
+      // Optional extras into metadata
+      metadata: {
+        wordCount,
+        difficulty,
+        text_storage_path: textStorageId,
+        email: userEmail || user.email || null,
+      },
       created_at: new Date().toISOString(),
-    });
+    };
 
-    if (legacyErr) {
-      throw new Error(`Insert failed (text_contributions legacy): ${formatSupabaseError(legacyErr)}`);
-    }
+    const { error } = await sb.from("text_contributions").insert(payload);
+    if (error) throw new Error(`Insert failed (text_contributions): ${formatSupabaseError(error)}`);
   } catch (err) {
     throw new Error(`Text contribution error: ${formatSupabaseError(err)}`);
   }
@@ -169,65 +93,67 @@ export async function insertVoiceContribution({
 
   try {
     const sb = getSupabaseClient();
+    const {
+      data: { user },
+      error: authErr,
+    } = await sb.auth.getUser();
+    if (authErr) throw authErr;
+    if (!user?.id) throw new Error("You must be signed in to submit audio.");
 
-    // Try to get the active Supabase session user for strict RLS (auth.uid())
-    let effectiveEmail = userEmail;
-    let supabaseUserId: string | undefined;
-    try {
-      const { data: { user } } = await sb.auth.getUser();
-      if (user?.email && !effectiveEmail) effectiveEmail = user.email;
-      if (user?.id) supabaseUserId = user.id;
-    } catch {
-      // ignore if no auth session
-    }
-    if (!effectiveEmail) throw new Error("Missing user email");
-
-    const languageId = await getOrCreateLanguageId(language);
-
-    // STRICT schema attempt (user_id + language_code + audio_path)
-    if (supabaseUserId) {
-      const strictPayload: Record<string, any> = {
-        user_id: supabaseUserId,
-        language_code: language,
-        audio_path: audioStorageId, // if your schema uses file/path column
-        duration,
-        is_validated: false,
-        metadata: { duration, supabase_user_id: supabaseUserId, email: effectiveEmail },
-        created_at: new Date().toISOString(),
-      };
-
-      const strictRes = await sb.from("audio_contributions").insert(strictPayload);
-      if (!strictRes.error) {
-        return;
-      }
-      const msg = formatSupabaseError(strictRes.error);
-      const maybeSchemaMismatch =
-        msg.toLowerCase().includes("column") ||
-        msg.toLowerCase().includes("does not exist") ||
-        msg.toLowerCase().includes("null value") ||
-        msg.toLowerCase().includes("violates row-level security") ||
-        msg.toLowerCase().includes("new row violates");
-      if (!maybeSchemaMismatch) {
-        throw new Error(`Insert failed (audio_contributions strict): ${msg}`);
-      }
-    }
-
-    // LEGACY schema fallback (user_email + language_id + language + audio_storage_id)
-    const { error } = await sb.from("audio_contributions").insert({
-      user_email: effectiveEmail,
-      language_id: languageId,
-      language,
-      audio_storage_id: audioStorageId,
-      duration,
-      is_validated: false,
-      metadata: { duration, supabase_user_id: supabaseUserId },
+    const payload: Record<string, any> = {
+      user_id: user.id,
+      language_code: language,
+      file_path: audioStorageId,
+      duration_seconds: duration,
+      is_processed: false,
+      metadata: { duration, email: userEmail || user.email || null },
       created_at: new Date().toISOString(),
-    });
+    };
 
-    if (error) {
-      throw new Error(`Insert failed (audio_contributions legacy): ${formatSupabaseError(error)}`);
-    }
+    const { error } = await sb.from("audio_contributions").insert(payload);
+    if (error) throw new Error(`Insert failed (audio_contributions): ${formatSupabaseError(error)}`);
   } catch (err) {
     throw new Error(`Voice contribution error: ${formatSupabaseError(err)}`);
+  }
+}
+
+export async function insertImageContribution({
+  userEmail,
+  language,
+  filePath,
+  caption,
+  extractedText,
+  fileSize,
+  topic,
+}: ImageContribution) {
+  if (!language) throw new Error("Missing language code");
+  if (!filePath) throw new Error("Missing image file path");
+
+  try {
+    const sb = getSupabaseClient();
+    const {
+      data: { user },
+      error: authErr,
+    } = await sb.auth.getUser();
+    if (authErr) throw authErr;
+    if (!user?.id) throw new Error("You must be signed in to submit an image.");
+
+    const payload: Record<string, any> = {
+      user_id: user.id,
+      language_code: language,
+      file_path: filePath,
+      file_size: fileSize,
+      caption: caption ?? null,
+      extracted_text: extractedText ?? null,
+      topic: topic ?? null,
+      is_processed: false,
+      metadata: { email: userEmail || user.email || null },
+      created_at: new Date().toISOString(),
+    };
+
+    const { error } = await sb.from("image_contributions").insert(payload);
+    if (error) throw new Error(`Insert failed (image_contributions): ${formatSupabaseError(error)}`);
+  } catch (err) {
+    throw new Error(`Image contribution error: ${formatSupabaseError(err)}`);
   }
 }

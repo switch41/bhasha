@@ -3,13 +3,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { getSupabaseClient } from "@/lib/supabase";
- 
+import { Image as ImageIcon } from "lucide-react";
+
 import { useState, useRef } from "react";
 import { toast } from "sonner";
 import { Mic, Type, Send, Loader2 } from "lucide-react";
 import { LanguageSelector } from "./LanguageSelector";
 import { motion } from "framer-motion";
 import { insertTextContribution, insertVoiceContribution } from "@/lib/supabaseContrib";
+import { insertImageContribution } from "@/lib/supabaseContrib";
 import { useAuth } from "@/hooks/use-auth";
 
 interface ContributionFormProps {
@@ -18,7 +20,7 @@ interface ContributionFormProps {
 
 export function ContributionForm({ onSuccess }: ContributionFormProps) {
   const [selectedLanguage, setSelectedLanguage] = useState<string>("");
-  const [contributionType, setContributionType] = useState<"text" | "voice">("text");
+  const [contributionType, setContributionType] = useState<"text" | "voice" | "image">("text");
   const [textContent, setTextContent] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -30,6 +32,9 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
   const timerRef = useRef<number | null>(null);
   const { user } = useAuth();
   const userEmail = user?.email || "";
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>("");
+  const [imageCaption, setImageCaption] = useState<string>("");
 
   async function uploadAudioToSupabase(audioBlob: Blob): Promise<string> {
     const sb = getSupabaseClient();
@@ -72,6 +77,25 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
     return path; // store path as textStorageId
   }
 
+  async function uploadImageToSupabase(file: File): Promise<{ path: string; size: number }> {
+    const sb = getSupabaseClient();
+    const fileName = `image_${Date.now()}_${file.name}`;
+    const path = `uploads/${fileName}`;
+    const { error } = await sb.storage.from("images").upload(path, file, {
+      cacheControl: "3600",
+      upsert: false,
+      contentType: file.type || "image/*",
+    });
+    if (error) {
+      const msg = String(error?.message || "Unknown error");
+      if (msg.toLowerCase().includes("not found") || msg.toLowerCase().includes("bucket")) {
+        toast.error("Missing Storage bucket 'images'. Create it in Supabase → Storage.");
+      }
+      throw new Error(`Image upload failed: ${msg}`);
+    }
+    return { path, size: file.size };
+  }
+
   const handleSubmit = async () => {
     if (!selectedLanguage) {
       toast.error("Please select a language");
@@ -90,14 +114,12 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
         if (!effectiveEmail && sbUser?.email) {
           effectiveEmail = sbUser.email;
         }
-      } catch {
-        // ignore auth read errors; we'll rely on local email
-      }
-
-      if (!effectiveEmail) {
-        toast.error("Please sign in to contribute (missing email)");
-        setIsSubmitting(false);
-        return;
+        // Also fail fast if there is no Supabase session to satisfy RLS
+        if (!sbUser?.id) {
+          throw new Error("You must be signed in (Supabase) to submit a contribution.");
+        }
+      } catch (e: any) {
+        throw new Error(e?.message || "You must be signed in (Supabase) to submit a contribution.");
       }
 
       if (contributionType === "text") {
@@ -110,7 +132,7 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
         const wc = textContent.trim().split(/\s+/).length;
         const diff = textContent.length > 100 ? "medium" : "easy";
 
-        // Upload the raw text file to Supabase Storage first
+        // Optional: upload raw text to storage (not required by schema, but helpful for reference)
         const textStoragePath = await uploadTextToSupabase(textContent.trim());
 
         await insertTextContribution({
@@ -122,16 +144,15 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
           textStorageId: textStoragePath,
         });
 
-        toast.success("Contribution submitted to Supabase!");
+        toast.success("Text contribution submitted!");
         setTextContent("");
-      } else {
+      } else if (contributionType === "voice") {
         if (!audioBlob) {
           toast.error("Please record audio first");
           setIsSubmitting(false);
           return;
         }
 
-        // Upload to Supabase Storage instead of Convex
         const storagePath = await uploadAudioToSupabase(audioBlob);
 
         await insertVoiceContribution({
@@ -141,10 +162,31 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
           duration: recordingDuration,
         });
 
-        toast.success("Voice contribution submitted to Supabase!");
+        toast.success("Voice contribution submitted!");
         setAudioBlob(null);
         setAudioUrl("");
         setRecordingDuration(0);
+      } else if (contributionType === "image") {
+        if (!imageFile) {
+          toast.error("Please select an image");
+          setIsSubmitting(false);
+          return;
+        }
+
+        const { path, size } = await uploadImageToSupabase(imageFile);
+
+        await insertImageContribution({
+          userEmail: effectiveEmail,
+          language: selectedLanguage as any,
+          filePath: path,
+          caption: imageCaption || undefined,
+          fileSize: size,
+        });
+
+        toast.success("Image contribution submitted!");
+        setImageFile(null);
+        setImagePreview("");
+        setImageCaption("");
       }
 
       onSuccess?.();
@@ -260,6 +302,14 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
                 <Mic className="h-4 w-4 mr-2" />
                 Voice
               </Button>
+              <Button
+                variant={contributionType === "image" ? "default" : "outline"}
+                onClick={() => setContributionType("image")}
+                className="flex-1"
+              >
+                <ImageIcon className="h-4 w-4 mr-2" />
+                Image
+              </Button>
             </div>
           </div>
 
@@ -308,13 +358,48 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
             </div>
           )}
 
+          {contributionType === "image" && (
+            <div className="space-y-4">
+              <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-lg w-full">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] || null;
+                    setImageFile(f || null);
+                    setImagePreview(f ? URL.createObjectURL(f) : "");
+                  }}
+                  className="mb-4"
+                  disabled={isSubmitting}
+                />
+                {imagePreview ? (
+                  <img src={imagePreview} alt="preview" className="max-h-64 rounded-md border" />
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center">
+                    Select an image to contribute (jpg, png, etc.)
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Caption (optional)</label>
+                <Textarea
+                  placeholder="Add a caption or context..."
+                  value={imageCaption}
+                  onChange={(e) => setImageCaption(e.target.value)}
+                  className="min-h-24 resize-none"
+                  disabled={isSubmitting}
+                />
+              </div>
+            </div>
+          )}
+
           {/* Submit Button */}
           <Button
             onClick={handleSubmit}
             disabled={
               isSubmitting ||
               !selectedLanguage ||
-              (contributionType === "text" ? !textContent.trim() : !audioBlob)
+              (contributionType === "text" ? !textContent.trim() : contributionType === "voice" ? !audioBlob : !imageFile)
             }
             className="w-full"
             size="lg"
