@@ -78,8 +78,12 @@ export function getSupabaseClient(): SupabaseClient {
 
   _client = createClient(url, anon, {
     auth: {
+      // Explicitly use localStorage for session persistence (browser only)
+      storage: (typeof localStorage !== "undefined" ? localStorage : undefined) as any,
       persistSession: true,
       autoRefreshToken: true,
+      // Keeps compatibility if you ever use Supabase OAuth/email links
+      detectSessionInUrl: true,
     },
   });
   return _client;
