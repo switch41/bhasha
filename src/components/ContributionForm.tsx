@@ -77,13 +77,29 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
       toast.error("Please select a language");
       return;
     }
-    if (!userEmail) {
-      toast.error("Please sign in to contribute (missing email)");
-      return;
-    }
 
     setIsSubmitting(true);
     try {
+      // Resolve email from Supabase Auth if local email is missing
+      const sb = getSupabaseClient();
+      let effectiveEmail = userEmail;
+      try {
+        const {
+          data: { user: sbUser },
+        } = await sb.auth.getUser();
+        if (!effectiveEmail && sbUser?.email) {
+          effectiveEmail = sbUser.email;
+        }
+      } catch {
+        // ignore auth read errors; we'll rely on local email
+      }
+
+      if (!effectiveEmail) {
+        toast.error("Please sign in to contribute (missing email)");
+        setIsSubmitting(false);
+        return;
+      }
+
       if (contributionType === "text") {
         if (!textContent.trim()) {
           toast.error("Please enter text content");
@@ -98,7 +114,7 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
         const textStoragePath = await uploadTextToSupabase(textContent.trim());
 
         await insertTextContribution({
-          userEmail,
+          userEmail: effectiveEmail,
           language: selectedLanguage as any,
           content: textContent.trim(),
           wordCount: wc,
@@ -119,7 +135,7 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
         const storagePath = await uploadAudioToSupabase(audioBlob);
 
         await insertVoiceContribution({
-          userEmail,
+          userEmail: effectiveEmail,
           language: selectedLanguage as any,
           audioStorageId: storagePath,
           duration: recordingDuration,
@@ -133,8 +149,12 @@ export function ContributionForm({ onSuccess }: ContributionFormProps) {
 
       onSuccess?.();
     } catch (error: any) {
-      const msg = error?.message || "Failed to submit to Supabase";
-      toast.error(msg);
+      // Improved error surface (RLS policy violations, bucket errors, etc.)
+      const message =
+        error?.message ||
+        error?.error_description ||
+        (typeof error === "string" ? error : "There was an error submitting your contribution. Please try again.");
+      toast.error(message);
       console.error("Submit error:", error);
     } finally {
       setIsSubmitting(false);

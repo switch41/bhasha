@@ -76,23 +76,34 @@ export async function insertTextContribution({
   difficulty,
   textStorageId,
 }: TextContribution) {
-  if (!userEmail) throw new Error("Missing user email");
   if (!language) throw new Error("Missing language code");
   if (!content?.trim()) throw new Error("Text content cannot be empty");
 
   try {
-    const languageId = await getOrCreateLanguageId(language);
     const sb = getSupabaseClient();
+    // Prefer Supabase Auth user if present
+    let email = userEmail;
+    let supabaseUserId: string | undefined;
+    try {
+      const { data: { user } } = await sb.auth.getUser();
+      if (user?.email && !email) email = user.email;
+      if (user?.id) supabaseUserId = user.id;
+    } catch {
+      // ignore if no auth session
+    }
+    if (!email) throw new Error("Missing user email");
+
+    const languageId = await getOrCreateLanguageId(language);
 
     const { error } = await sb.from("text_contributions").insert({
-      user_email: userEmail,
+      user_email: email,
       language_id: languageId,
       language,
       content,
       word_count: wordCount,
       difficulty,
       is_validated: false,
-      metadata: { wordCount, difficulty, text_storage_id: textStorageId },
+      metadata: { wordCount, difficulty, text_storage_id: textStorageId, supabase_user_id: supabaseUserId },
       created_at: new Date().toISOString(),
     });
 
@@ -110,22 +121,33 @@ export async function insertVoiceContribution({
   audioStorageId,
   duration,
 }: VoiceContribution) {
-  if (!userEmail) throw new Error("Missing user email");
   if (!language) throw new Error("Missing language code");
   if (!audioStorageId) throw new Error("Missing audio storage id");
 
   try {
-    const languageId = await getOrCreateLanguageId(language);
     const sb = getSupabaseClient();
+    // Prefer Supabase Auth user if present
+    let email = userEmail;
+    let supabaseUserId: string | undefined;
+    try {
+      const { data: { user } } = await sb.auth.getUser();
+      if (user?.email && !email) email = user.email;
+      if (user?.id) supabaseUserId = user.id;
+    } catch {
+      // ignore if no auth session
+    }
+    if (!email) throw new Error("Missing user email");
+
+    const languageId = await getOrCreateLanguageId(language);
 
     const { error } = await sb.from("audio_contributions").insert({
-      user_email: userEmail,
+      user_email: email,
       language_id: languageId,
       language,
       audio_storage_id: audioStorageId,
       duration,
       is_validated: false,
-      metadata: { duration },
+      metadata: { duration, supabase_user_id: supabaseUserId },
       created_at: new Date().toISOString(),
     });
 
