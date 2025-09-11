@@ -60,7 +60,12 @@ function resolveSupabaseEnv(): { url?: string; anon?: string } {
   } catch {
     // ignore storage access errors
   }
-  return { url: runtimeUrl, anon: runtimeAnon };
+  // Add final-resort fallbacks so the app works out of the box if nothing is configured
+  const fallbackUrl = "https://ccmrbdknqrbdduwwfdcw.supabase.co";
+  const fallbackAnon =
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNjbXJiZGtucXJiZGR1d3dmZGN3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0Mzc5NDksImV4cCI6MjA3MzAxMzk0OX0.Xfd29chmT_-ESA3bPs3pOnTIItF_XEvhCXz26iZeb00";
+
+  return { url: runtimeUrl || fallbackUrl, anon: runtimeAnon || fallbackAnon };
 }
 
 let _client: SupabaseClient | null = null;
