@@ -81,86 +81,77 @@ export async function insertTextContribution({
 
   try {
     const sb = getSupabaseClient();
-    // Prefer Supabase Auth user if present
-    let email = userEmail;
+
+    // Try to get the active Supabase session user for strict RLS (auth.uid())
+    let effectiveEmail = userEmail;
     let supabaseUserId: string | undefined;
     try {
-      const {
-        data: { user },
-      } = await sb.auth.getUser();
-      if (user?.email && !email) email = user.email;
+      const { data: { user } } = await sb.auth.getUser();
+      if (user?.email && !effectiveEmail) effectiveEmail = user.email;
       if (user?.id) supabaseUserId = user.id;
     } catch {
       // ignore if no auth session
     }
-    if (!email) throw new Error("Missing user email");
+
+    if (!effectiveEmail) throw new Error("Missing user email");
 
     const languageId = await getOrCreateLanguageId(language);
 
-    // Try RLS-friendly schema first (user_id + language_code); fallback to old schema if columns don't exist
-    const baseMetadata = {
-      wordCount,
-      difficulty,
-      text_storage_id: textStorageId,
-      supabase_user_id: supabaseUserId,
-    };
-
-    // Attempt 1: user_id + language_code (common RLS pattern)
-    try {
-      const { error: err1 } = await sb.from("text_contributions").insert({
-        user_id: supabaseUserId, // will allow RLS checks like auth.uid() = user_id
+    // STRICT schema attempt (requires Supabase Auth session + columns user_id, language_code)
+    // If your table enforces auth.uid() = user_id via RLS, this will pass.
+    if (supabaseUserId) {
+      const strictPayload: Record<string, any> = {
+        user_id: supabaseUserId,
         language_code: language,
         content,
-        topic: null, // optional; ignored by DB if not present
-        // keep our fields as extras in case both schemas coexist
-        user_email: email,
-        language_id: languageId,
-        language,
         word_count: wordCount,
         difficulty,
         is_validated: false,
-        metadata: baseMetadata,
+        // Keep metadata rich
+        metadata: {
+          wordCount,
+          difficulty,
+          text_storage_id: textStorageId,
+          supabase_user_id: supabaseUserId,
+          email: effectiveEmail,
+        },
         created_at: new Date().toISOString(),
-      });
+      };
 
-      if (!err1) return;
-
-      const msg = String(err1?.message || "");
-      // If columns don't exist, fallback to legacy schema insert
-      const isUndefinedColumn = msg.includes("column") && msg.includes("does not exist");
-      if (!isUndefinedColumn) {
-        // If it's an RLS error or other, bubble it up
-        throw new Error(`Insert failed (text_contributions): ${msg}`);
+      const strictRes = await sb.from("text_contributions").insert(strictPayload);
+      if (!strictRes.error) {
+        return;
       }
-      // else continue to fallback attempt below
-    } catch (e1) {
-      const msg = (e1 as any)?.message || "";
-      const isUndefinedColumn = String(msg).includes("column") && String(msg).includes("does not exist");
-      if (!isUndefinedColumn) throw new Error(`Insert failed (text_contributions): ${msg}`);
-      // otherwise proceed to fallback
+      // If strict fails due to missing columns or different schema, fall through to legacy
+      // but only if the error looks like a column issue or not-null/RLS mismatch
+      // Otherwise propagate the specific error
+      const msg = formatSupabaseError(strictRes.error);
+      const maybeSchemaMismatch =
+        msg.toLowerCase().includes("column") ||
+        msg.toLowerCase().includes("does not exist") ||
+        msg.toLowerCase().includes("null value") ||
+        msg.toLowerCase().includes("violates row-level security") ||
+        msg.toLowerCase().includes("new row violates");
+      if (!maybeSchemaMismatch) {
+        throw new Error(`Insert failed (text_contributions strict): ${msg}`);
+      }
     }
 
-    // Attempt 2: legacy schema (user_email + language_id)
-    const { error: err2 } = await sb.from("text_contributions").insert({
-      user_email: email,
+    // LEGACY schema (user_email + language_id + language) fallback
+    const { error: legacyErr } = await sb.from("text_contributions").insert({
+      user_email: effectiveEmail,
       language_id: languageId,
       language,
       content,
       word_count: wordCount,
       difficulty,
       is_validated: false,
-      metadata: baseMetadata,
+      metadata: { wordCount, difficulty, text_storage_id: textStorageId, supabase_user_id: supabaseUserId },
       created_at: new Date().toISOString(),
     });
 
-    if (err2) {
-      const code = (err2 as any)?.code || "";
-      if (code === "42501" || String(err2.message).toLowerCase().includes("row-level security")) {
-        throw new Error(
-          "RLS blocked the insert on text_contributions. Ensure your policies allow INSERT for your role or include user_id matching auth.uid()."
-        );
-      }
-      throw new Error(`Insert failed (text_contributions): ${String(err2.message || err2)}`);
+    if (legacyErr) {
+      throw new Error(`Insert failed (text_contributions legacy): ${formatSupabaseError(legacyErr)}`);
     }
   } catch (err) {
     throw new Error(`Text contribution error: ${formatSupabaseError(err)}`);
@@ -178,75 +169,63 @@ export async function insertVoiceContribution({
 
   try {
     const sb = getSupabaseClient();
-    // Prefer Supabase Auth user if present
-    let email = userEmail;
+
+    // Try to get the active Supabase session user for strict RLS (auth.uid())
+    let effectiveEmail = userEmail;
     let supabaseUserId: string | undefined;
     try {
-      const {
-        data: { user },
-      } = await sb.auth.getUser();
-      if (user?.email && !email) email = user.email;
+      const { data: { user } } = await sb.auth.getUser();
+      if (user?.email && !effectiveEmail) effectiveEmail = user.email;
       if (user?.id) supabaseUserId = user.id;
     } catch {
       // ignore if no auth session
     }
-    if (!email) throw new Error("Missing user email");
+    if (!effectiveEmail) throw new Error("Missing user email");
 
     const languageId = await getOrCreateLanguageId(language);
 
-    const baseMetadata = { duration, supabase_user_id: supabaseUserId };
-
-    // Attempt 1: user_id + language_code (RLS-friendly)
-    try {
-      const { error: err1 } = await sb.from("audio_contributions").insert({
+    // STRICT schema attempt (user_id + language_code + audio_path)
+    if (supabaseUserId) {
+      const strictPayload: Record<string, any> = {
         user_id: supabaseUserId,
         language_code: language,
-        audio_path: audioStorageId, // optional in some schemas
-        // keep our fields for compatibility
-        user_email: email,
-        language_id: languageId,
-        language,
-        audio_storage_id: audioStorageId,
+        audio_path: audioStorageId, // if your schema uses file/path column
         duration,
         is_validated: false,
-        metadata: baseMetadata,
+        metadata: { duration, supabase_user_id: supabaseUserId, email: effectiveEmail },
         created_at: new Date().toISOString(),
-      });
+      };
 
-      if (!err1) return;
-
-      const msg = String(err1?.message || "");
-      const isUndefinedColumn = msg.includes("column") && msg.includes("does not exist");
-      if (!isUndefinedColumn) {
-        throw new Error(`Insert failed (audio_contributions): ${msg}`);
+      const strictRes = await sb.from("audio_contributions").insert(strictPayload);
+      if (!strictRes.error) {
+        return;
       }
-    } catch (e1) {
-      const msg = (e1 as any)?.message || "";
-      const isUndefinedColumn = String(msg).includes("column") && String(msg).includes("does not exist");
-      if (!isUndefinedColumn) throw new Error(`Insert failed (audio_contributions): ${msg}`);
-      // otherwise proceed to fallback
+      const msg = formatSupabaseError(strictRes.error);
+      const maybeSchemaMismatch =
+        msg.toLowerCase().includes("column") ||
+        msg.toLowerCase().includes("does not exist") ||
+        msg.toLowerCase().includes("null value") ||
+        msg.toLowerCase().includes("violates row-level security") ||
+        msg.toLowerCase().includes("new row violates");
+      if (!maybeSchemaMismatch) {
+        throw new Error(`Insert failed (audio_contributions strict): ${msg}`);
+      }
     }
 
-    // Attempt 2: legacy schema
-    const { error: err2 } = await sb.from("audio_contributions").insert({
-      user_email: email,
+    // LEGACY schema fallback (user_email + language_id + language + audio_storage_id)
+    const { error } = await sb.from("audio_contributions").insert({
+      user_email: effectiveEmail,
       language_id: languageId,
       language,
       audio_storage_id: audioStorageId,
       duration,
       is_validated: false,
-      metadata: baseMetadata,
+      metadata: { duration, supabase_user_id: supabaseUserId },
       created_at: new Date().toISOString(),
     });
 
-    if (err2) {
-      const code = (err2 as any)?.code || "";
-      if (code === "42501" || String(err2.message).toLowerCase().includes("row-level security")) {
-        throw new Error(
-          "RLS blocked the insert on audio_contributions. Ensure your policies allow INSERT for your role or include user_id matching auth.uid()."
-        );
-      }
-      throw new Error(`Insert failed (audio_contributions): ${String(err2.message || err2)}`);
+    if (error) {
+      throw new Error(`Insert failed (audio_contributions legacy): ${formatSupabaseError(error)}`);
     }
   } catch (err) {
     throw new Error(`Voice contribution error: ${formatSupabaseError(err)}`);
